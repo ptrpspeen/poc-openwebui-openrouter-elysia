@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import base64
 from typing import Dict
 
 import httpx
@@ -31,6 +32,22 @@ def clean_hop_by_hop_headers(headers: Dict[str, str]) -> Dict[str, str]:
     return {k: v for k, v in headers.items() if k.lower() not in hop}
 
 
+def get_user_from_jwt(token: str) -> str:
+    try:
+        parts = token.split(".")
+        if len(parts) < 2:
+            return None
+        payload = parts[1]
+        # Pad base64
+        payload += "=" * ((4 - len(payload) % 4) % 4)
+        decoded = base64.urlsafe_b64decode(payload)
+        data = json.loads(decoded)
+        # Prefer email, then id, then sub
+        return data.get("email") or data.get("id") or data.get("sub")
+    except Exception:
+        return None
+
+
 def log_event(event: Dict):
     if LOG_MODE == "off":
         return
@@ -45,6 +62,18 @@ async def proxy_v1(path: str, request: Request):
     upstream_url = f"{OPENROUTER_BASE}/v1/{path}"
 
     in_headers = dict(request.headers)
+
+    # 1. Try to get user from X-OpenWebUI headers (if ENABLE_FORWARD_USER_INFO_HEADERS=true)
+    user_id = request.headers.get("x-openwebui-user-email") or \
+              request.headers.get("x-openwebui-user-id")
+
+    # 2. Fallback: Extract user from JWT (if provided in Authorization)
+    if not user_id:
+        auth_header = in_headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header.split(" ", 1)[1]
+            user_id = get_user_from_jwt(token)
+
     in_headers.pop("host", None)
     in_headers.pop("content-length", None)
 
@@ -81,14 +110,49 @@ async def proxy_v1(path: str, request: Request):
 
     body_bytes = await request.body()
 
+    # Inject OpenRouter "user" field for tracking
+    injected = False
+    if user_id and request.method == "POST" and "application/json" in request.headers.get("content-type", "").lower() and body_bytes:
+        try:
+            payload = json.loads(body_bytes)
+            if isinstance(payload, dict):
+                payload["user"] = user_id
+                body_bytes = json.dumps(payload).encode("utf-8")
+                injected = True
+        except Exception:
+            pass
+
     start = time.time()
-    log_event({
+    log_data = {
         "type": "request",
         "ts": int(start),
         "method": request.method,
         "path": f"/v1/{path}",
         "query": str(request.url.query),
-    })
+        "user_id": user_id,
+        "injected_tracking": injected,
+        "debug_headers": {k: v for k, v in request.headers.items() if k.lower() not in {"authorization", "cookie"}},  # Hide sensitive headers
+        "debug_auth_len": len(request.headers.get("authorization", "")),
+        "debug_auth_prefix": request.headers.get("authorization", "")[:10] if request.headers.get("authorization") else "None"
+    }
+
+    if injected:
+        # Preview a small part of payload to avoid spamming logs
+        try:
+             log_data["payload_preview"] = json.loads(body_bytes)
+        except:
+             pass
+
+    # --- Debug: Check raw body from OpenWebUI ---
+    if request.method == "POST" and "chat/completions" in path:
+        try:
+             raw_body_json = json.loads(body_bytes)
+             log_data["incoming_body_preview"] = raw_body_json
+        except:
+             pass
+    # --------------------------------------------
+
+    log_event(log_data)
 
     client = httpx.AsyncClient(timeout=None)
     req = client.build_request(

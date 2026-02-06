@@ -26,6 +26,7 @@ services:
       - OPENAI_API_BASE_URL=http://middleware:8080/v1
       - OPENAI_API_KEY=dummy_key
       - WEBUI_TELEMETRY=false
+      - ENABLE_FORWARD_USER_INFO_HEADERS=true # ส่ง User Headers ไปยัง Middleware
     volumes:
       - openwebui_data:/app/backend/data
     ports:
