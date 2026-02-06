@@ -1,0 +1,124 @@
+import os
+import json
+import time
+from typing import Dict
+
+import httpx
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
+
+OPENROUTER_BASE = "https://openrouter.ai/api"   # ✅ correct base
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+OPENROUTER_HTTP_REFERER = os.environ.get("OPENROUTER_HTTP_REFERER")
+OPENROUTER_X_TITLE = os.environ.get("OPENROUTER_X_TITLE")
+LOG_MODE = os.environ.get("LOG_MODE", "metadata")  # metadata|off
+
+app = FastAPI()
+
+
+def clean_hop_by_hop_headers(headers: Dict[str, str]) -> Dict[str, str]:
+    hop = {
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailer",
+        "transfer-encoding",
+        "upgrade",
+    }
+    return {k: v for k, v in headers.items() if k.lower() not in hop}
+
+
+def log_event(event: Dict):
+    if LOG_MODE == "off":
+        return
+    print(json.dumps(event, ensure_ascii=False))
+
+
+@app.api_route("/v1/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+async def proxy_v1(path: str, request: Request):
+    if not OPENROUTER_API_KEY:
+        return Response(content="OPENROUTER_API_KEY not set", status_code=500)
+
+    upstream_url = f"{OPENROUTER_BASE}/v1/{path}"
+
+    in_headers = dict(request.headers)
+    in_headers.pop("host", None)
+    in_headers.pop("content-length", None)
+
+    # ตัด headers ที่ไม่ควรส่งต่อไป OpenRouter
+    strip = {
+        "cookie",
+        "authorization",     # ของ OpenWebUI (JWT)
+        "x-forwarded-for",
+        "x-real-ip",
+        "x-forwarded-proto",
+        "x-forwarded-host",
+        "accept-encoding",   # ตัดเพื่อเลี่ยง zstd/br mismatch
+    }
+    headers = {
+        k: v for k, v in in_headers.items()
+        if k.lower() not in strip
+    }
+
+    # hop-by-hop
+    headers = clean_hop_by_hop_headers(headers)
+
+    # ใส่ auth ของ OpenRouter
+    headers["Authorization"] = f"Bearer {OPENROUTER_API_KEY}"
+    headers["User-Agent"] = headers.get("User-Agent", "OpenWebUI-Middleware/1.0")
+
+    # Optional headers
+    if OPENROUTER_HTTP_REFERER:
+        headers["HTTP-Referer"] = OPENROUTER_HTTP_REFERER
+    if OPENROUTER_X_TITLE:
+        headers["X-Title"] = OPENROUTER_X_TITLE
+
+    # บังคับให้ upstream ตอบ JSON
+    headers["Accept"] = "application/json"
+
+    body_bytes = await request.body()
+
+    start = time.time()
+    log_event({
+        "type": "request",
+        "ts": int(start),
+        "method": request.method,
+        "path": f"/v1/{path}",
+        "query": str(request.url.query),
+    })
+
+    client = httpx.AsyncClient(timeout=None)
+    req = client.build_request(
+        request.method,
+        upstream_url,
+        headers=headers,
+        content=body_bytes,
+        params=dict(request.query_params),
+    )
+
+    r = await client.send(req, stream=True)
+
+    out_headers = clean_hop_by_hop_headers(dict(r.headers))
+    out_headers.pop("content-length", None)
+    out_headers.pop("content-encoding", None)
+
+    async def close_client():
+        await r.aclose()
+        await client.aclose()
+
+    log_event({
+        "type": "response_stream",
+        "status_code": r.status_code,
+        "elapsed_ms": int((time.time() - start) * 1000),
+        "path": f"/v1/{path}",
+    })
+
+    return StreamingResponse(
+        r.aiter_bytes(),
+        status_code=r.status_code,
+        headers=out_headers,
+        background=BackgroundTask(close_client)
+    )
