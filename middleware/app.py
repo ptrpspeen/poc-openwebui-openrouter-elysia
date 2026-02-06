@@ -54,6 +54,20 @@ def log_event(event: Dict):
     print(json.dumps(event, ensure_ascii=False))
 
 
+
+async def process_usage(user_id: str, model: str, usage: Dict):
+    """
+    Placeholder for recording usage stats to DB.
+    Currently logs to stdout.
+    """
+    log_event({
+        "type": "usage_report",
+        "user_id": user_id,
+        "model": model,
+        "usage": usage
+    })
+
+
 @app.api_route("/v1/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def proxy_v1(path: str, request: Request):
     if not OPENROUTER_API_KEY:
@@ -131,26 +145,7 @@ async def proxy_v1(path: str, request: Request):
         "query": str(request.url.query),
         "user_id": user_id,
         "injected_tracking": injected,
-        "debug_headers": {k: v for k, v in request.headers.items() if k.lower() not in {"authorization", "cookie"}},  # Hide sensitive headers
-        "debug_auth_len": len(request.headers.get("authorization", "")),
-        "debug_auth_prefix": request.headers.get("authorization", "")[:10] if request.headers.get("authorization") else "None"
     }
-
-    if injected:
-        # Preview a small part of payload to avoid spamming logs
-        try:
-             log_data["payload_preview"] = json.loads(body_bytes)
-        except:
-             pass
-
-    # --- Debug: Check raw body from OpenWebUI ---
-    if request.method == "POST" and "chat/completions" in path:
-        try:
-             raw_body_json = json.loads(body_bytes)
-             log_data["incoming_body_preview"] = raw_body_json
-        except:
-             pass
-    # --------------------------------------------
 
     log_event(log_data)
 
@@ -173,6 +168,29 @@ async def proxy_v1(path: str, request: Request):
         await r.aclose()
         await client.aclose()
 
+    # Wrapper to sniff usage data from SSE stream
+    async def stream_with_usage_tracking(response):
+        buffer = ""
+        async for chunk in response.aiter_bytes():
+            yield chunk
+            # Sniffing logic for usage data
+            try:
+                text = chunk.decode("utf-8", errors="ignore")
+                buffer += text
+                while "\n\n" in buffer:
+                    part, buffer = buffer.split("\n\n", 1)
+                    if part.startswith("data: "):
+                        data_str = part[6:].strip()
+                        if data_str and data_str != "[DONE]":
+                            try:
+                                data = json.loads(data_str)
+                                if "usage" in data:
+                                    await process_usage(user_id, data.get("model", ""), data["usage"])
+                            except:
+                                pass
+            except Exception:
+                pass
+
     log_event({
         "type": "response_stream",
         "status_code": r.status_code,
@@ -181,7 +199,7 @@ async def proxy_v1(path: str, request: Request):
     })
 
     return StreamingResponse(
-        r.aiter_bytes(),
+        stream_with_usage_tracking(r),
         status_code=r.status_code,
         headers=out_headers,
         background=BackgroundTask(close_client)
