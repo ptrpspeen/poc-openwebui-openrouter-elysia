@@ -4,9 +4,10 @@ import { redis } from "./redis";
 
 const OPENROUTER_BASE = "https://openrouter.ai/api";
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY || "admin-secret-key"; // แนะนำให้ตั้งใน .env
 const OPENROUTER_HTTP_REFERER = process.env.OPENROUTER_HTTP_REFERER;
 const OPENROUTER_X_TITLE = process.env.OPENROUTER_X_TITLE;
-const LOG_MODE = process.env.LOG_MODE || "metadata"; // metadata|off
+const LOG_MODE = process.env.LOG_MODE || "metadata"; 
 
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
@@ -56,7 +57,6 @@ function getUserFromJWT(token: string): string | null {
   }
 }
 
-// Phase 2: Auto-Register & Quota Check
 async function ensureUserExists(userId: string) {
   const user = db.query("SELECT * FROM users WHERE id = ?").get(userId);
   if (!user) {
@@ -75,12 +75,10 @@ async function checkAccess(userId: string, model: string): Promise<{ allowed: bo
   const policy: any = db.query("SELECT * FROM policies WHERE id = ?").get(user.policy_id);
   if (!policy) return { allowed: false, reason: "No policy assigned" };
 
-  // Check allowed models
   if (policy.allowed_models !== "*" && !policy.allowed_models.split(",").includes(model)) {
     return { allowed: false, reason: `Model ${model} not allowed by policy` };
   }
 
-  // Check Quota in Redis
   const dailyKey = `usage:user:${userId}:daily:${new Date().toISOString().split('T')[0]}`;
   const monthlyKey = `usage:user:${userId}:monthly:${new Date().toISOString().slice(0, 7)}`;
 
@@ -105,26 +103,18 @@ function logEvent(event: Record<string, unknown>) {
   console.log(JSON.stringify(event));
 }
 
-// Phase 3: Async Logging
-async function processUsage(
-  userId: string | null,
-  model: string,
-  usage: any
-) {
+async function processUsage(userId: string | null, model: string, usage: any) {
   if (!userId) return;
 
   const dailyKey = `usage:user:${userId}:daily:${new Date().toISOString().split('T')[0]}`;
   const monthlyKey = `usage:user:${userId}:monthly:${new Date().toISOString().slice(0, 7)}`;
 
-  // Update Redis immediately (Hot Path)
   const total = usage.total_tokens || (usage.prompt_tokens + usage.completion_tokens);
   await Promise.all([
     redis.incrby(dailyKey, total),
     redis.incrby(monthlyKey, total),
-    // Expire keys after 40 days to clean up
     redis.expire(dailyKey, 3456000),
     redis.expire(monthlyKey, 3456000),
-    // Queue for SQL persistence
     redis.lpush("usage_queue", JSON.stringify({
       user_id: userId,
       model,
@@ -138,7 +128,6 @@ async function processUsage(
   logEvent({ type: "usage_tracked", user_id: userId, model, total });
 }
 
-// Phase 3: Background Worker
 async function startBackgroundWorker() {
   console.log("👷 Background Worker started");
   while (true) {
@@ -174,40 +163,29 @@ function cleanResponseHeaders(headers: Headers): Record<string, string> {
   return result;
 }
 
-async function* streamWithUsageTracking(
-  response: Response,
-  userId: string | null
-): AsyncGenerator<Uint8Array> {
+async function* streamWithUsageTracking(response: Response, userId: string | null): AsyncGenerator<Uint8Array> {
   const reader = response.body?.getReader();
   if (!reader) return;
-
   const decoder = new TextDecoder();
   let buffer = "";
-
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-
       yield value;
-
       try {
         const text = decoder.decode(value, { stream: true });
         buffer += text;
-
         while (buffer.includes("\n\n")) {
           const idx = buffer.indexOf("\n\n");
           const part = buffer.slice(0, idx);
           buffer = buffer.slice(idx + 2);
-
           if (part.startsWith("data: ")) {
             const dataStr = part.slice(6).trim();
             if (dataStr && dataStr !== "[DONE]") {
               try {
                 const data = JSON.parse(dataStr);
-                if (data.usage) {
-                  await processUsage(userId, data.model || "", data.usage);
-                }
+                if (data.usage) await processUsage(userId, data.model || "", data.usage);
               } catch { }
             }
           }
@@ -222,7 +200,8 @@ async function* streamWithUsageTracking(
 const app = new Elysia()
   .all("/v1/*", async ({ request, params, set }) => {
     if (!OPENROUTER_API_KEY) {
-      return new Response("OPENROUTER_API_KEY not set", { status: 500 });
+      set.status = 500;
+      return "OPENROUTER_API_KEY not set";
     }
 
     const path = (params as { "*": string })["*"];
@@ -236,18 +215,13 @@ const app = new Elysia()
       }
     }
 
-    // Phase 2 Logic
-    if (userId) {
-      await ensureUserExists(userId);
-    }
+    if (userId) await ensureUserExists(userId);
 
-    // Intercept Body to check model and quota
     let body: any = null;
     let modelName = "unknown";
     if (request.method === "POST" && request.headers.get("content-type")?.includes("application/json")) {
       body = await request.json();
       modelName = body.model || "unknown";
-
       if (userId) {
         const access = await checkAccess(userId, modelName);
         if (!access.allowed) {
@@ -286,17 +260,21 @@ const app = new Elysia()
       });
       return new Response(stream, { status: upstreamResponse.status, headers: responseHeaders });
     } else {
-      // Non-streaming response tracking
       const respData = await upstreamResponse.json();
-      if (respData.usage) {
-        await processUsage(userId, respData.model || modelName, respData.usage);
-      }
+      if (respData.usage) await processUsage(userId, respData.model || modelName, respData.usage);
       return new Response(JSON.stringify(respData), { status: upstreamResponse.status, headers: responseHeaders });
     }
   })
   .get("/health", () => ({ status: "ok", engine: "elysia", storage: "hybrid" }))
   .group("/admin", (app) =>
     app
+      .onBeforeHandle(({ request, set }) => {
+        const auth = request.headers.get("x-admin-key");
+        if (auth !== ADMIN_API_KEY) {
+          set.status = 401;
+          return "Unauthorized";
+        }
+      })
       .get("/users", () => db.query("SELECT * FROM users").all())
       .get("/policies", () => db.query("SELECT * FROM policies").all())
       .get("/usage", () => db.query("SELECT * FROM usage_logs ORDER BY ts DESC LIMIT 100").all())
