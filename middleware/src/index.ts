@@ -1,4 +1,6 @@
 import { Elysia } from "elysia";
+import { db } from "./db";
+import { redis } from "./redis";
 
 const OPENROUTER_BASE = "https://openrouter.ai/api";
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
@@ -45,7 +47,6 @@ function getUserFromJWT(token: string): string | null {
     const parts = token.split(".");
     if (parts.length < 2) return null;
     let payload = parts[1];
-    // Pad base64
     payload += "=".repeat((4 - (payload.length % 4)) % 4);
     const decoded = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
     const data = JSON.parse(decoded);
@@ -55,22 +56,107 @@ function getUserFromJWT(token: string): string | null {
   }
 }
 
+// Phase 2: Auto-Register & Quota Check
+async function ensureUserExists(userId: string) {
+  const user = db.query("SELECT * FROM users WHERE id = ?").get(userId);
+  if (!user) {
+    console.log(`👤 Auto-registering new user: ${userId}`);
+    db.run(
+      "INSERT INTO users (id, policy_id) VALUES (?, ?)",
+      [userId, "default"]
+    );
+  }
+}
+
+async function checkAccess(userId: string, model: string): Promise<{ allowed: boolean; reason?: string }> {
+  const user: any = db.query("SELECT * FROM users WHERE id = ?").get(userId);
+  if (!user || !user.is_active) return { allowed: false, reason: "User inactive or not found" };
+
+  const policy: any = db.query("SELECT * FROM policies WHERE id = ?").get(user.policy_id);
+  if (!policy) return { allowed: false, reason: "No policy assigned" };
+
+  // Check allowed models
+  if (policy.allowed_models !== "*" && !policy.allowed_models.split(",").includes(model)) {
+    return { allowed: false, reason: `Model ${model} not allowed by policy` };
+  }
+
+  // Check Quota in Redis
+  const dailyKey = `usage:user:${userId}:daily:${new Date().toISOString().split('T')[0]}`;
+  const monthlyKey = `usage:user:${userId}:monthly:${new Date().toISOString().slice(0, 7)}`;
+
+  const [dailyUsage, monthlyUsage] = await Promise.all([
+    redis.get(dailyKey).then(v => parseInt(v || "0")),
+    redis.get(monthlyKey).then(v => parseInt(v || "0"))
+  ]);
+
+  if (policy.daily_token_limit > 0 && dailyUsage >= policy.daily_token_limit) {
+    return { allowed: false, reason: "Daily token limit exceeded" };
+  }
+
+  if (policy.monthly_token_limit > 0 && monthlyUsage >= policy.monthly_token_limit) {
+    return { allowed: false, reason: "Monthly token limit exceeded" };
+  }
+
+  return { allowed: true };
+}
+
 function logEvent(event: Record<string, unknown>) {
   if (LOG_MODE === "off") return;
   console.log(JSON.stringify(event));
 }
 
+// Phase 3: Async Logging
 async function processUsage(
   userId: string | null,
   model: string,
-  usage: Record<string, unknown>
+  usage: any
 ) {
-  logEvent({
-    type: "usage_report",
-    user_id: userId,
-    model,
-    usage,
-  });
+  if (!userId) return;
+
+  const dailyKey = `usage:user:${userId}:daily:${new Date().toISOString().split('T')[0]}`;
+  const monthlyKey = `usage:user:${userId}:monthly:${new Date().toISOString().slice(0, 7)}`;
+
+  // Update Redis immediately (Hot Path)
+  const total = usage.total_tokens || (usage.prompt_tokens + usage.completion_tokens);
+  await Promise.all([
+    redis.incrby(dailyKey, total),
+    redis.incrby(monthlyKey, total),
+    // Expire keys after 40 days to clean up
+    redis.expire(dailyKey, 3456000),
+    redis.expire(monthlyKey, 3456000),
+    // Queue for SQL persistence
+    redis.lpush("usage_queue", JSON.stringify({
+      user_id: userId,
+      model,
+      prompt_tokens: usage.prompt_tokens,
+      completion_tokens: usage.completion_tokens,
+      total_tokens: total,
+      ts: new Date().toISOString()
+    }))
+  ]);
+
+  logEvent({ type: "usage_tracked", user_id: userId, model, total });
+}
+
+// Phase 3: Background Worker
+async function startBackgroundWorker() {
+  console.log("👷 Background Worker started");
+  while (true) {
+    try {
+      const item = await redis.rpop("usage_queue");
+      if (item) {
+        const data = JSON.parse(item);
+        db.run(
+          "INSERT INTO usage_logs (user_id, model, prompt_tokens, completion_tokens, total_tokens, ts) VALUES (?, ?, ?, ?, ?, ?)",
+          [data.user_id, data.model, data.prompt_tokens, data.completion_tokens, data.total_tokens, data.ts]
+        );
+      } else {
+        await new Promise(r => setTimeout(r, 5000));
+      }
+    } catch (e) {
+      console.error("Worker Error:", e);
+    }
+  }
 }
 
 function cleanResponseHeaders(headers: Headers): Record<string, string> {
@@ -105,7 +191,6 @@ async function* streamWithUsageTracking(
 
       yield value;
 
-      // Sniff for usage data
       try {
         const text = decoder.decode(value, { stream: true });
         buffer += text;
@@ -123,15 +208,11 @@ async function* streamWithUsageTracking(
                 if (data.usage) {
                   await processUsage(userId, data.model || "", data.usage);
                 }
-              } catch {
-                // ignore parse errors
-              }
+              } catch { }
             }
           }
         }
-      } catch {
-        // ignore sniffing errors
-      }
+      } catch { }
     }
   } finally {
     reader.releaseLock();
@@ -139,7 +220,7 @@ async function* streamWithUsageTracking(
 }
 
 const app = new Elysia()
-  .all("/v1/*", async ({ request, params }) => {
+  .all("/v1/*", async ({ request, params, set }) => {
     if (!OPENROUTER_API_KEY) {
       return new Response("OPENROUTER_API_KEY not set", { status: 500 });
     }
@@ -147,109 +228,88 @@ const app = new Elysia()
     const path = (params as { "*": string })["*"];
     const upstreamUrl = `${OPENROUTER_BASE}/v1/${path}`;
 
-    // Get user ID from headers or JWT
-    let userId =
-      request.headers.get("x-openwebui-user-email") ||
-      request.headers.get("x-openwebui-user-id");
-
+    let userId = request.headers.get("x-openwebui-user-email") || request.headers.get("x-openwebui-user-id");
     if (!userId) {
       const authHeader = request.headers.get("authorization") || "";
       if (authHeader.startsWith("Bearer ")) {
-        const token = authHeader.split(" ")[1];
-        userId = getUserFromJWT(token);
+        userId = getUserFromJWT(authHeader.split(" ")[1]);
       }
     }
 
-    // Clean and prepare headers
+    // Phase 2 Logic
+    if (userId) {
+      await ensureUserExists(userId);
+    }
+
+    // Intercept Body to check model and quota
+    let body: any = null;
+    let modelName = "unknown";
+    if (request.method === "POST" && request.headers.get("content-type")?.includes("application/json")) {
+      body = await request.json();
+      modelName = body.model || "unknown";
+
+      if (userId) {
+        const access = await checkAccess(userId, modelName);
+        if (!access.allowed) {
+          set.status = 403;
+          return { error: access.reason };
+        }
+        body.user = userId;
+      }
+    }
+
     const headers = cleanHeaders(request.headers);
     headers["Authorization"] = `Bearer ${OPENROUTER_API_KEY}`;
-    headers["User-Agent"] =
-      request.headers.get("user-agent") || "OpenWebUI-Middleware/1.0";
-    headers["Accept"] = "application/json";
+    headers["User-Agent"] = request.headers.get("user-agent") || "OpenWebUI-Middleware/1.0";
+    if (OPENROUTER_HTTP_REFERER) headers["HTTP-Referer"] = OPENROUTER_HTTP_REFERER;
+    if (OPENROUTER_X_TITLE) headers["X-Title"] = OPENROUTER_X_TITLE;
 
-    if (OPENROUTER_HTTP_REFERER) {
-      headers["HTTP-Referer"] = OPENROUTER_HTTP_REFERER;
-    }
-    if (OPENROUTER_X_TITLE) {
-      headers["X-Title"] = OPENROUTER_X_TITLE;
-    }
-
-    // Get request body and inject user tracking
-    let body: BodyInit | null = null;
-    let injected = false;
-
-    if (request.method === "POST") {
-      const contentType = request.headers.get("content-type") || "";
-      if (contentType.toLowerCase().includes("application/json")) {
-        try {
-          const payload = await request.json();
-          if (userId && typeof payload === "object" && payload !== null) {
-            (payload as Record<string, unknown>).user = userId;
-            injected = true;
-          }
-          body = JSON.stringify(payload);
-          headers["Content-Type"] = "application/json";
-        } catch {
-          body = await request.text();
-        }
-      } else {
-        body = await request.arrayBuffer();
-      }
-    }
-
-    const start = Date.now();
-    logEvent({
-      type: "request",
-      ts: Math.floor(start / 1000),
-      method: request.method,
-      path: `/v1/${path}`,
-      query: new URL(request.url).search,
-      user_id: userId,
-      injected_tracking: injected,
-    });
-
-    // Build upstream URL with query params
     const url = new URL(upstreamUrl);
-    const requestUrl = new URL(request.url);
-    requestUrl.searchParams.forEach((value, key) => {
-      url.searchParams.set(key, value);
-    });
+    new URL(request.url).searchParams.forEach((v, k) => url.searchParams.set(k, v));
 
     const upstreamResponse = await fetch(url.toString(), {
       method: request.method,
       headers,
-      body,
-    });
-
-    logEvent({
-      type: "response_stream",
-      status_code: upstreamResponse.status,
-      elapsed_ms: Date.now() - start,
-      path: `/v1/${path}`,
+      body: body ? JSON.stringify(body) : (request.method === "GET" ? null : await request.arrayBuffer()),
     });
 
     const responseHeaders = cleanResponseHeaders(upstreamResponse.headers);
 
-    // Stream response with usage tracking
-    const stream = new ReadableStream({
-      async start(controller) {
-        for await (const chunk of streamWithUsageTracking(
-          upstreamResponse,
-          userId
-        )) {
-          controller.enqueue(chunk);
-        }
-        controller.close();
-      },
-    });
-
-    return new Response(stream, {
-      status: upstreamResponse.status,
-      headers: responseHeaders,
-    });
+    if (upstreamResponse.headers.get("content-type")?.includes("text/event-stream")) {
+      const stream = new ReadableStream({
+        async start(controller) {
+          for await (const chunk of streamWithUsageTracking(upstreamResponse, userId)) {
+            controller.enqueue(chunk);
+          }
+          controller.close();
+        },
+      });
+      return new Response(stream, { status: upstreamResponse.status, headers: responseHeaders });
+    } else {
+      // Non-streaming response tracking
+      const respData = await upstreamResponse.json();
+      if (respData.usage) {
+        await processUsage(userId, respData.model || modelName, respData.usage);
+      }
+      return new Response(JSON.stringify(respData), { status: upstreamResponse.status, headers: responseHeaders });
+    }
   })
+  .get("/health", () => ({ status: "ok", engine: "elysia", storage: "hybrid" }))
+  .group("/admin", (app) =>
+    app
+      .get("/users", () => db.query("SELECT * FROM users").all())
+      .get("/policies", () => db.query("SELECT * FROM policies").all())
+      .get("/usage", () => db.query("SELECT * FROM usage_logs ORDER BY ts DESC LIMIT 100").all())
+      .post("/policies", ({ body }: any) => {
+        const { id, name, daily_token_limit, monthly_token_limit, allowed_models } = body;
+        db.run(
+          "INSERT INTO policies (id, name, daily_token_limit, monthly_token_limit, allowed_models) VALUES (?, ?, ?, ?, ?)",
+          [id, name, daily_token_limit, monthly_token_limit, allowed_models]
+        );
+        return { success: true };
+      })
+  )
   .listen(8080);
 
-console.log(
-  `🦊 OpenRouter Middleware (Elysia) running at http://localhost:${app.server?.port}`
-);
+console.log(`🦊 AI Control Plane running at http://localhost:${app.server?.port}`);
+startBackgroundWorker();

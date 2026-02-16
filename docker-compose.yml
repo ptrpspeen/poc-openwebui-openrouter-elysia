@@ -1,20 +1,28 @@
 services:
+  redis:
+    image: redis:alpine
+    container_name: openrouter_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+
   middleware:
     build:
       context: ./middleware
     container_name: openrouter_middleware
+    depends_on:
+      - redis
     environment:
-      # ใส่ OpenRouter key จริงไว้ที่ middleware เท่านั้น
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-
-      # แนะนำ: ตั้งค่าเพื่อระบุตัวตน app ใน OpenRouter (optional)
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_PATH=/app/data/database.sqlite
       - OPENROUTER_HTTP_REFERER=http://localhost:3000
       - OPENROUTER_X_TITLE=OpenWebUI-Local-POC
-
-      # ตัวอย่าง: ถ้าจะ log แบบย่อ (ไม่ log prompt)
       - LOG_MODE=metadata
     ports:
       - "8080:8080"
+    volumes:
+      - ./middleware/data:/app/data
     restart: unless-stopped
 
   openwebui:
@@ -26,14 +34,13 @@ services:
       - OPENAI_API_BASE_URL=http://middleware:8080/v1
       - OPENAI_API_KEY=dummy_key
       - WEBUI_TELEMETRY=false
-      - ENABLE_FORWARD_USER_INFO_HEADERS=true # ส่ง User Headers ไปยัง Middleware
+      - ENABLE_FORWARD_USER_INFO_HEADERS=true
     volumes:
       - openwebui_data:/app/backend/data
     ports:
       - "3000:8080"
     restart: unless-stopped
 
-
 volumes:
+  redis_data:
   openwebui_data:
-
