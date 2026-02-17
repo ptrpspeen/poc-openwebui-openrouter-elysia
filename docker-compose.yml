@@ -6,23 +6,33 @@ services:
     volumes:
       - redis_data:/data
 
+  db:
+    image: postgres:alpine
+    container_name: openrouter_db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=adminpassword
+      - POSTGRES_DB=ai_control
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
   middleware:
     build:
       context: ./middleware
     container_name: openrouter_middleware
     depends_on:
       - redis
+      - db
     environment:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - REDIS_URL=redis://redis:6379
-      - DATABASE_PATH=/app/data/database.sqlite
+      - DATABASE_URL=postgresql://admin:adminpassword@db:5432/ai_control
       - OPENROUTER_HTTP_REFERER=http://localhost:3000
       - OPENROUTER_X_TITLE=OpenWebUI-Local-POC
       - LOG_MODE=metadata
     ports:
       - "8080:8080"
-    volumes:
-      - ./middleware/data:/app/data
     restart: unless-stopped
 
   openwebui:
@@ -43,4 +53,5 @@ services:
 
 volumes:
   redis_data:
+  postgres_data:
   openwebui_data:

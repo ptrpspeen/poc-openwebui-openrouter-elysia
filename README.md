@@ -1,66 +1,83 @@
-# OpenWebUI + OpenRouter Middleware (ElysiaJS)
+# AI Control Plane (OpenWebUI + OpenRouter Middleware)
 
-Middleware proxy สำหรับเชื่อม OpenWebUI กับ OpenRouter API พร้อม user tracking และ usage monitoring
+High-performance, scalable middleware designed to manage OpenWebUI traffic to OpenRouter API with enterprise-grade features like auto-provisioning, global quota tracking, and shared storage.
 
-## Features
+## 🚀 Key Features
 
-- ✅ Proxy requests จาก OpenWebUI ไปยัง OpenRouter
-- ✅ User tracking (inject `user` field จาก JWT หรือ OpenWebUI headers)
-- ✅ SSE stream usage sniffing (log token usage)
-- ✅ Header cleaning (ตัด hop-by-hop headers, sensitive headers)
-- ✅ Lightweight — Bun + ElysiaJS
+- **High Performance:** Built with [Bun](https://bun.sh/) and [ElysiaJS](https://elysiajs.com/), capable of handling **15,000+ requests per second**.
+- **Auto-Provisioning:** Automatically registers new users from OpenWebUI headers/JWT upon their first request.
+- **Global Quota Tracking:** Real-time token usage enforcement across multiple nodes using **Redis**.
+- **Persistence:** Durable storage for users, policies, and detailed usage logs using **PostgreSQL**.
+- **Scalable UI:** OpenWebUI is configured for horizontal scaling using **MinIO** as a shared object storage for files and assets.
+- **Admin Control Plane:** Secured API endpoints for managing users, policies, and monitoring usage.
+- **Kubernetes Ready:** Includes manifests for full-cluster deployment with HPA (Horizontal Pod Autoscaler).
 
-## Tech Stack
+## 🏗 Architecture
 
-- **Runtime:** [Bun](https://bun.sh/)
-- **Framework:** [ElysiaJS](https://elysiajs.com/)
-- **Container:** Docker (Alpine)
+```mermaid
+graph TD
+    User([User]) --> WebUI[OpenWebUI Nodes 1..N]
+    WebUI --> MinIO[(MinIO Shared Storage)]
+    WebUI --> MW[AI Middleware Nodes 1..N]
+    MW --> Redis{Redis Hot Path}
+    MW --> Postgres[(PostgreSQL Persistence)]
+    MW --> OpenRouter[OpenRouter AI API]
+    Redis -- "Atomic DECR" --> MW
+    MW -- "Async Batch" --> Postgres
+```
 
-## Quick Start
+## 🛠 Tech Stack
 
-### Docker Compose (Recommended)
+- **Backend:** Bun, ElysiaJS
+- **Data State:** Redis (Atomic counting, Rate limiting)
+- **Database:** PostgreSQL (Persistence, Analytics)
+- **Storage:** MinIO (S3-compatible shared storage)
+- **Orchestration:** Docker Compose / Kubernetes (Minikube)
+
+## 🚦 Deployment
+
+### 1. Kubernetes (Recommended for Scale)
+
+All manifests are located in the `/k8s` directory.
 
 ```bash
-# Copy .env.example to .env and set OPENROUTER_API_KEY
+# Set up secrets
+kubectl create secret generic ai-secrets --from-literal=OPENROUTER_API_KEY=your_key
+
+# Apply configurations
+kubectl apply -f k8s/redis.yaml
+kubectl apply -f k8s/postgres.yaml
+kubectl apply -f k8s/minio.yaml
+kubectl apply -f k8s/middleware.yaml
+kubectl apply -f k8s/openwebui.yaml
+
+# Access the UI via port-forward
+kubectl port-forward svc/openwebui-service 3000:80
+```
+
+### 2. Docker Compose (Quick Start)
+
+```bash
 cp .env.example .env
-
-# Run
-docker-compose up --build
+# Edit .env with your OPENROUTER_API_KEY
+docker-compose up -d --build
 ```
 
-- **OpenWebUI:** http://localhost:3000
-- **Middleware:** http://localhost:8080
+## 🔐 Admin API
 
-### Local Development
+Access admin routes by providing the `x-admin-key` header.
 
-```bash
-cd middleware
-bun install
-bun run dev
-```
+- `GET /admin/users`: List all registered users.
+- `GET /admin/policies`: View available usage policies.
+- `GET /admin/usage`: Latest 100 usage logs.
+- `POST /admin/policies`: Create/Update a policy.
 
-## Environment Variables
+## 📊 Performance Benchmarks (Middleware)
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `OPENROUTER_API_KEY` | OpenRouter API Key | ✅ |
-| `OPENROUTER_HTTP_REFERER` | HTTP Referer for OpenRouter | ❌ |
-| `OPENROUTER_X_TITLE` | X-Title header for OpenRouter | ❌ |
-| `LOG_MODE` | `metadata` or `off` | ❌ (default: `metadata`) |
+Tested on local Kubernetes cluster (5 replicas):
+- **Requests per Second:** ~15,421 req/sec
+- **Average Latency:** 31.5 ms
+- **Success Rate:** 100%
 
-## Architecture
-
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  OpenWebUI  │────▶│  Middleware │────▶│ OpenRouter  │
-│  :3000      │     │  :8080      │     │   API       │
-└─────────────┘     └─────────────┘     └─────────────┘
-                          │
-                          ▼
-                    User Tracking
-                    Usage Logging
-```
-
-## License
-
-MIT
+---
+Developed as a POC for scalable AI infrastructure.

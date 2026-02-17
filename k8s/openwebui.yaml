@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openwebui
+spec:
+  replicas: 2 # Scaled out!
+  selector:
+    matchLabels:
+      app: openwebui
+  template:
+    metadata:
+      labels:
+        app: openwebui
+    spec:
+      containers:
+      - name: openwebui
+        image: ghcr.io/open-webui/open-webui:main
+        env:
+        - name: OPENAI_API_BASE_URL
+          value: "http://middleware-service:8080/v1"
+        - name: OPENAI_API_KEY
+          value: "dummy_key"
+        - name: WEBUI_TELEMETRY
+          value: "false"
+        - name: ENABLE_FORWARD_USER_INFO_HEADERS
+          value: "true"
+        # Shared Database (Optional: recommended to use Postgres for global scale)
+        # But for storage scaling:
+        - name: RAG_WEB_SEARCH_ENGINE
+          value: "google"
+        # MinIO Configuration
+        - name: OBJECT_STORAGE_ENABLED
+          value: "true"
+        - name: OBJECT_STORAGE_ENDPOINT
+          value: "minio-service:9000"
+        - name: OBJECT_STORAGE_BUCKET
+          value: "openwebui"
+        - name: OBJECT_STORAGE_ACCESS_KEY
+          value: "minioadmin"
+        - name: OBJECT_STORAGE_SECRET_KEY
+          value: "minioadmin"
+        - name: OBJECT_STORAGE_USE_SSL
+          value: "false"
+        ports:
+        - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openwebui-service
+spec:
+  type: NodePort
+  selector:
+    app: openwebui
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
+    nodePort: 30007
