@@ -296,12 +296,31 @@ const app = new Elysia()
         );
         return { success: true };
       })
+      .delete("/group-policies/:name", async ({ params }) => {
+        await db.run("DELETE FROM group_policies WHERE group_name = $1", [params.name]);
+        return { success: true };
+      })
+      .patch("/users/:id", async ({ params, body }: any) => {
+        const { is_active, policy_id } = body;
+        if (is_active !== undefined) {
+          await db.run("UPDATE users SET is_active = $1 WHERE id = $2", [is_active ? 1 : 0, params.id]);
+        }
+        if (policy_id !== undefined) {
+          await db.run("UPDATE users SET policy_id = $1 WHERE id = $2", [policy_id, params.id]);
+        }
+        return { success: true };
+      })
       .post("/policies", async ({ body }: any) => {
         const { id, name, daily_token_limit, monthly_token_limit, allowed_models } = body;
         await db.run(
           "INSERT INTO policies (id, name, daily_token_limit, monthly_token_limit, allowed_models) VALUES ($1, $2, $3, $4, $5) ON CONFLICT(id) DO UPDATE SET name=excluded.name, daily_token_limit=excluded.daily_token_limit, monthly_token_limit=excluded.monthly_token_limit, allowed_models=excluded.allowed_models",
           [id, name, daily_token_limit, monthly_token_limit, allowed_models]
         );
+        return { success: true };
+      })
+      .delete("/policies/:id", async ({ params }) => {
+        if (params.id === 'default') return { success: false, error: "Cannot delete default policy" };
+        await db.run("DELETE FROM policies WHERE id = $1", [params.id]);
         return { success: true };
       })
   )

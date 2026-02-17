@@ -5,6 +5,7 @@ metadata:
 data:
   REDIS_URL: "redis://redis-service:6379"
   DATABASE_URL: "postgresql://admin:adminpassword@postgres-service:5432/ai_control"
+  WEBUI_DATABASE_URL: "postgresql://admin:adminpassword@postgres-service:5432/openwebui"
   LOG_MODE: "metadata"
   OPENROUTER_HTTP_REFERER: "http://localhost:3000"
   OPENROUTER_X_TITLE: "OpenWebUI-Local-POC"
