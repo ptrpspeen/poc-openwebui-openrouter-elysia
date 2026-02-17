@@ -287,6 +287,7 @@ const app = new Elysia()
       .get("/policies", () => db.all("SELECT * FROM policies"))
       .get("/usage", () => db.all("SELECT * FROM usage_logs ORDER BY ts DESC LIMIT 100"))
       .get("/group-policies", () => db.all("SELECT * FROM group_policies"))
+      .get("/openwebui-groups", () => webuiDb.all('SELECT name FROM "group"'))
       .post("/group-policies", async ({ body }: any) => {
         const { group_name, policy_id, priority } = body;
         await db.run(

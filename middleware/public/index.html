@@ -112,7 +112,7 @@
         </div>
 
         <!-- Tab Content: Users -->
-        <div x-show="view === 'users' || view === 'overview'" class="mb-8">
+        <div x-show="view === 'users' || view === 'overview'" class="mb-8 border-b border-gray-200 pb-8 last:border-0 last:pb-0">
             <div class="bg-white shadow-sm rounded-xl border border-gray-100 overflow-hidden">
                 <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                     <h2 class="text-lg font-bold text-gray-800">User Management</h2>
@@ -174,8 +174,16 @@
                     </h2>
                     <form class="space-y-4" @submit.prevent="saveGroupPolicy">
                         <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-1">Group Name (OpenWebUI)</label>
-                            <input type="text" x-model="newGroupPolicy.group_name" placeholder="e.g. Teacher" class="w-full px-3 py-2 rounded-lg border border-gray-200 outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm">
+                            <label class="block text-sm font-bold text-gray-700 mb-1">Select Group (from OpenWebUI)</label>
+                            <select x-model="newGroupPolicy.group_name" class="w-full px-3 py-2 rounded-lg border border-gray-200 outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm bg-white">
+                                <option value="">Choose a group</option>
+                                <template x-for="g in webuiGroups" :key="g.name">
+                                    <option :value="g.name" x-text="g.name"></option>
+                                </template>
+                            </select>
+                            <div class="mt-2 text-xs text-gray-400">
+                                Groups synced from OpenWebUI database.
+                            </div>
                         </div>
                         <div>
                             <label class="block text-sm font-bold text-gray-700 mb-1">Target Policy</label>
@@ -345,6 +353,7 @@
                 users: [],
                 policies: [],
                 groupPolicies: [],
+                webuiGroups: [],
                 usage: [],
                 stats: {
                     totalUsers: 0,
@@ -382,17 +391,19 @@
                     this.loading = true;
                     try {
                         const headers = { 'x-admin-key': this.adminKey };
-                        const [users, policies, usage, gps] = await Promise.all([
+                        const [users, policies, usage, gps, wgs] = await Promise.all([
                             fetch('/admin/users', { headers }).then(r => r.json()),
                             fetch('/admin/policies', { headers }).then(r => r.json()),
                             fetch('/admin/usage', { headers }).then(r => r.json()),
-                            fetch('/admin/group-policies', { headers }).then(r => r.json())
+                            fetch('/admin/group-policies', { headers }).then(r => r.json()),
+                            fetch('/admin/openwebui-groups', { headers }).then(r => r.json())
                         ]);
                         
                         this.users = users;
                         this.policies = policies;
                         this.usage = usage;
                         this.groupPolicies = gps;
+                        this.webuiGroups = wgs;
 
                         // Calc stats
                         this.stats.totalUsers = users.length;
