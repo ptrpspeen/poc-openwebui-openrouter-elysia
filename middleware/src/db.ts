@@ -55,6 +55,15 @@ export async function initDb() {
   `);
 
   await db.run(`
+    CREATE TABLE IF NOT EXISTS group_policies (
+      group_name TEXT PRIMARY KEY,
+      policy_id TEXT REFERENCES policies(id),
+      priority INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await db.run(`
     CREATE TABLE IF NOT EXISTS usage_logs (
       id SERIAL PRIMARY KEY,
       user_id TEXT,

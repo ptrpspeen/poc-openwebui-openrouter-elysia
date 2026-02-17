@@ -69,14 +69,33 @@ async function ensureUserExists(userId: string) {
   }
 }
 
-async function checkAccess(userId: string, role?: string): Promise<{ allowed: boolean; reason?: string; groups: string[] }> {
+async function checkAccess(userId: string): Promise<{ allowed: boolean; reason?: string; groups: string[] }> {
   const user: any = await db.get("SELECT * FROM users WHERE id = $1", [userId]);
   const groups = await getUserGroups(userId);
 
   if (!user || !user.is_active) return { allowed: false, reason: "User inactive or not found", groups };
 
-  const policy: any = await db.get("SELECT * FROM policies WHERE id = $1", [user.policy_id]);
-  if (!policy) return { allowed: false, reason: "No policy assigned", groups };
+  // Phase 4: Group-based Policy Selection
+  // 1. Check if user has a specific policy override
+  // 2. If not, check user groups for the highest priority policy
+  // 3. Fallback to 'default' policy
+  
+  let activePolicyId = user.policy_id;
+
+  if (activePolicyId === 'default' && groups.length > 0) {
+      const groupPolicy: any = await db.get(`
+          SELECT policy_id FROM group_policies 
+          WHERE group_name = ANY($1) 
+          ORDER BY priority DESC LIMIT 1
+      `, [groups]);
+      if (groupPolicy) {
+          activePolicyId = groupPolicy.policy_id;
+          console.log(`🏷️ Group policy applied for ${userId}: ${activePolicyId} (from groups: ${groups})`);
+      }
+  }
+
+  const policy: any = await db.get("SELECT * FROM policies WHERE id = $1", [activePolicyId]);
+  if (!policy) return { allowed: false, reason: `Policy ${activePolicyId} not found`, groups };
 
   const dailyKey = `usage:user:${userId}:daily:${new Date().toISOString().split('T')[0]}`;
   const monthlyKey = `usage:user:${userId}:monthly:${new Date().toISOString().slice(0, 7)}`;
@@ -219,7 +238,7 @@ const app = new Elysia()
       body = await request.json();
       modelName = body.model || "unknown";
       if (userId) {
-        const access = await checkAccess(userId, userRole || undefined);
+        const access = await checkAccess(userId);
         if (!access.allowed) { set.status = 403; return { error: access.reason }; }
         // Pass group info to AI if needed or use for internal logic
         console.log(`User ${userId} groups:`, access.groups);
@@ -267,6 +286,15 @@ const app = new Elysia()
       .get("/users", () => db.all("SELECT * FROM users"))
       .get("/policies", () => db.all("SELECT * FROM policies"))
       .get("/usage", () => db.all("SELECT * FROM usage_logs ORDER BY ts DESC LIMIT 100"))
+      .get("/group-policies", () => db.all("SELECT * FROM group_policies"))
+      .post("/group-policies", async ({ body }: any) => {
+        const { group_name, policy_id, priority } = body;
+        await db.run(
+          "INSERT INTO group_policies (group_name, policy_id, priority) VALUES ($1, $2, $3) ON CONFLICT(group_name) DO UPDATE SET policy_id=excluded.policy_id, priority=excluded.priority",
+          [group_name, policy_id, priority || 0]
+        );
+        return { success: true };
+      })
       .post("/policies", async ({ body }: any) => {
         const { id, name, daily_token_limit, monthly_token_limit, allowed_models } = body;
         await db.run(
