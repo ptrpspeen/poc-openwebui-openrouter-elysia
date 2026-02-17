@@ -40,7 +40,8 @@ function getUserFromJWT(token: string): string | null {
     payload += "=".repeat((4 - (payload.length % 4)) % 4);
     const decoded = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
     const data = JSON.parse(decoded);
-    return data.email || data.id || data.sub || null;
+    const id = data.email || data.id || data.sub || null;
+    return id ? id.toLowerCase() : null; // Lowercase for consistency
   } catch { return null; }
 }
 
@@ -48,13 +49,23 @@ async function ensureUserExists(userId: string) {
   const user = await db.get("SELECT * FROM users WHERE id = $1", [userId]);
   if (!user) {
     console.log(`👤 Auto-registering new user: ${userId}`);
-    await db.run("INSERT INTO users (id, policy_id) VALUES ($1, $2)", [userId, "default"]);
+    await db.run("INSERT INTO users (id, policy_id) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING", [userId, "default"]);
   }
 }
 
 async function checkAccess(userId: string, model: string): Promise<{ allowed: boolean; reason?: string }> {
+  console.log(`🔍 Checking access for user: [${userId}] model: [${model}]`);
   const user: any = await db.get("SELECT * FROM users WHERE id = $1", [userId]);
-  if (!user || !user.is_active) return { allowed: false, reason: "User inactive or not found" };
+  
+  if (!user) {
+    console.log(`❌ User not found in DB: ${userId}`);
+    return { allowed: false, reason: `User not found: ${userId}` };
+  }
+  
+  if (!user.is_active || user.is_active === 0) {
+    console.log(`❌ User inactive: ${userId}`);
+    return { allowed: false, reason: "User account is inactive" };
+  }
 
   const policy: any = await db.get("SELECT * FROM policies WHERE id = $1", [user.policy_id]);
   if (!policy) return { allowed: false, reason: "No policy assigned" };
@@ -174,12 +185,20 @@ const app = new Elysia()
     if (!OPENROUTER_API_KEY) { set.status = 500; return "OPENROUTER_API_KEY not set"; }
     const path = (params as { "*": string })["*"];
     const upstreamUrl = `${OPENROUTER_BASE}/v1/${path}`;
-    let userId = request.headers.get("x-openwebui-user-email") || request.headers.get("x-openwebui-user-id");
+
+    let rawUserId = request.headers.get("x-openwebui-user-email") || request.headers.get("x-openwebui-user-id");
+    let userId: string | null = rawUserId ? rawUserId.toLowerCase().trim() : null;
+
     if (!userId) {
       const authHeader = request.headers.get("authorization") || "";
       if (authHeader.startsWith("Bearer ")) userId = getUserFromJWT(authHeader.split(" ")[1]);
     }
-    if (userId) await ensureUserExists(userId);
+
+    if (userId) {
+      await ensureUserExists(userId);
+    } else {
+      console.log("⚠️ No user identity found in headers or token");
+    }
     let body: any = null;
     let modelName = "unknown";
     if (request.method === "POST" && request.headers.get("content-type")?.includes("application/json")) {
