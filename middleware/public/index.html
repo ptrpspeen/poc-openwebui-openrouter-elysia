@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full bg-slate-950">
+<html lang="en" class="h-full" :class="{ 'dark': darkMode }" x-data="{ darkMode: localStorage.getItem('theme') === 'dark' }">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     fontFamily: {
@@ -38,9 +39,13 @@
     <style>
         [x-cloak] { display: none !important; }
         .glass {
-            background: rgba(15, 23, 42, 0.6);
+            background: rgba(255, 255, 255, 0.7);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+        }
+        .dark .glass {
+            background: rgba(15, 23, 42, 0.6);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
         .luxury-gradient {
@@ -56,17 +61,17 @@
         }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .dark ::-webkit-scrollbar-thumb { background: #334155; }
     </style>
 </head>
-<body class="h-full text-slate-200" x-data="dashboard()">
+<body class="h-full text-slate-600 bg-slate-50 dark:text-slate-200 dark:bg-slate-950 transition-colors duration-300" x-data="dashboard()">
     
     <!-- Auth Shield -->
-    <div x-show="!adminKey" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950 px-4" x-transition.opacity>
+    <div x-show="!adminKey" class="fixed inset-0 z-[100] flex items-center justify-center bg-white dark:bg-slate-950 px-4" x-transition.opacity>
         <div class="absolute inset-0 overflow-hidden pointer-events-none">
-            <div class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-blue-600/10 blur-[120px]"></div>
-            <div class="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-purple-600/10 blur-[120px]"></div>
+            <div class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-blue-600/5 dark:bg-blue-600/10 blur-[120px]"></div>
+            <div class="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-purple-600/5 dark:bg-purple-600/10 blur-[120px]"></div>
         </div>
         
         <div class="glass relative w-full max-w-md overflow-hidden rounded-2xl p-8 shadow-2xl">
@@ -74,23 +79,19 @@
                 <div class="luxury-gradient mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl shadow-lg glow">
                     <i class="fa-solid fa-vault text-2xl text-white"></i>
                 </div>
-                <h2 class="text-3xl font-extrabold tracking-tight text-white">Admin Access</h2>
-                <p class="mt-2 text-slate-400">Secure entry to AI Control Plane</p>
+                <h2 class="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">Admin Access</h2>
+                <p class="mt-2 text-slate-500 dark:text-slate-400">Secure entry to AI Control Plane</p>
             </div>
             <form @submit.prevent="saveKey" class="space-y-6">
                 <div>
-                    <label class="block text-xs font-semibold uppercase tracking-widest text-slate-500 mb-2">Secret Key</label>
+                    <label class="block text-xs font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2">Secret Key</label>
                     <input type="password" x-model="keyInput" 
-                           class="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-luxury-500 focus:border-transparent transition-all placeholder:text-slate-600"
-                           placeholder="••••••••••••••••">
+                           class="w-full bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-luxury-500 focus:border-transparent transition-all">
                 </div>
                 <button type="submit" class="luxury-gradient w-full py-4 rounded-xl font-bold text-white shadow-lg hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-2">
                     Initialize Session <i class="fa-solid fa-arrow-right-long"></i>
                 </button>
             </form>
-            <div class="mt-8 text-center">
-                <p class="text-[10px] uppercase tracking-[0.2em] text-slate-600 font-bold">Standard Security Protocol V3.2</p>
-            </div>
         </div>
     </div>
 
@@ -98,21 +99,21 @@
     <div x-show="adminKey" class="flex h-full" x-cloak>
         
         <!-- Sidebar -->
-        <aside class="hidden md:flex w-72 flex-col bg-slate-900/40 border-r border-slate-800/60 backdrop-blur-md">
+        <aside class="hidden md:flex w-72 flex-col bg-white dark:bg-slate-900/40 border-r border-slate-200 dark:border-slate-800/60 backdrop-blur-md">
             <div class="p-8 flex items-center gap-3">
                 <div class="luxury-gradient h-10 w-10 rounded-xl flex items-center justify-center shadow-lg">
                     <i class="fa-solid fa-bolt text-white"></i>
                 </div>
                 <div>
-                    <h2 class="text-lg font-bold leading-none text-white">Clawdia</h2>
-                    <p class="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1">Control Plane</p>
+                    <h2 class="text-lg font-bold leading-none text-slate-900 dark:text-white">Clawdia</h2>
+                    <p class="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider mt-1">Control Plane</p>
                 </div>
             </div>
 
             <nav class="flex-1 px-4 space-y-2 mt-4">
                 <template x-for="item in menuItems" :key="item.id">
                     <button @click="view = item.id" 
-                            :class="view === item.id ? 'bg-luxury-500/10 text-luxury-400 border-l-4 border-luxury-500 shadow-sm' : 'text-slate-500 hover:bg-slate-800/30 hover:text-slate-300 border-l-4 border-transparent'"
+                            :class="view === item.id ? 'bg-luxury-500/10 text-luxury-600 dark:text-luxury-400 border-l-4 border-luxury-500 shadow-sm' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/30 hover:text-slate-600 dark:hover:text-slate-300 border-l-4 border-transparent'"
                             class="group flex w-full items-center px-4 py-3 text-sm font-semibold transition-all">
                         <i :class="item.icon" class="mr-3 w-5 text-lg transition-transform group-hover:scale-110"></i>
                         <span x-text="item.label"></span>
@@ -121,18 +122,18 @@
             </nav>
 
             <div class="p-6">
-                <div class="glass rounded-xl p-4 border-slate-800/60">
+                <div class="glass rounded-xl p-4 border-slate-200 dark:border-slate-800/60">
                     <div class="flex items-center gap-3 mb-3">
                         <div class="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
-                        <span class="text-xs font-bold text-slate-400 uppercase tracking-tight">System Status</span>
+                        <span class="text-xs font-bold text-slate-500 uppercase tracking-tight">System Status</span>
                     </div>
-                    <div class="text-[10px] text-slate-500 font-mono space-y-1">
+                    <div class="text-[10px] text-slate-400 dark:text-slate-500 font-mono space-y-1">
                         <p>ID: K8S_CLUSTER_PROD</p>
                         <p>LATENCY: 12ms</p>
                     </div>
                 </div>
-                <button @click="logout" class="mt-6 flex w-full items-center px-4 py-2 text-sm text-slate-500 hover:text-red-400 transition-colors">
-                    <i class="fa-solid fa-power-off mr-3"></i> Terminate Session
+                <button @click="logout" class="mt-6 flex w-full items-center px-4 py-2 text-sm text-slate-400 hover:text-red-500 transition-colors">
+                    <i class="fa-solid fa-power-off mr-3"></i> Terminate
                 </button>
             </div>
         </aside>
@@ -143,23 +144,26 @@
             <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-luxury-600/5 blur-[120px] rounded-full -translate-y-1/2 translate-x-1/4 pointer-events-none"></div>
 
             <!-- Top Header -->
-            <header class="h-20 flex items-center justify-between px-8 border-b border-slate-800/40 relative z-10">
-                <div class="md:hidden luxury-gradient h-10 w-10 rounded-xl flex items-center justify-center">
-                    <i class="fa-solid fa-bars text-white"></i>
-                </div>
+            <header class="h-20 flex items-center justify-between px-8 border-b border-slate-200 dark:border-slate-800/40 relative z-10 bg-white/50 dark:bg-transparent backdrop-blur-md">
                 <div class="flex items-center gap-4">
                     <div class="h-10 w-1 bg-luxury-500 rounded-full"></div>
-                    <h1 class="text-xl font-bold text-white tracking-tight" x-text="menuItems.find(i => i.id === view).label"></h1>
+                    <h1 class="text-xl font-bold text-slate-900 dark:text-white tracking-tight" x-text="menuItems.find(i => i.id === view).label"></h1>
                 </div>
-                <div class="flex items-center gap-6">
+                <div class="flex items-center gap-4 sm:gap-6">
+                    <!-- Theme Toggle -->
+                    <button @click="toggleTheme" class="glass p-2.5 rounded-xl text-slate-500 dark:text-yellow-400 hover:scale-110 transition-all">
+                        <i class="fa-solid" :class="darkMode ? 'fa-sun' : 'fa-moon'"></i>
+                    </button>
+
                     <div class="flex flex-col items-end hidden sm:flex">
-                        <span class="text-xs font-bold text-slate-500 uppercase tracking-widest leading-none mb-1">Authenticated as</span>
-                        <span class="text-sm font-bold text-white leading-none">Super Admin</span>
+                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Session Protocol</span>
+                        <span class="text-sm font-bold text-slate-700 dark:text-white leading-none">Super Admin</span>
                     </div>
+                    
                     <button @click="refreshAll" 
-                            class="glass px-4 py-2 rounded-xl text-sm font-bold hover:bg-slate-800 transition-all flex items-center gap-2 group">
-                        <i class="fa-solid fa-arrows-rotate text-luxury-400 group-hover:rotate-180 transition-transform duration-500"></i>
-                        Sync Now
+                            class="luxury-gradient px-4 py-2 rounded-xl text-xs font-black uppercase text-white shadow-lg hover:brightness-110 transition-all flex items-center gap-2 group">
+                        <i class="fa-solid fa-arrows-rotate group-hover:rotate-180 transition-transform duration-500"></i>
+                        <span class="hidden md:inline">Sync</span>
                     </button>
                 </div>
             </header>
@@ -170,78 +174,67 @@
                 <!-- Dashboard Statistics Grid -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
                     <template x-for="stat in statsCards" :key="stat.label">
-                        <div class="glass p-6 rounded-2xl group hover:border-luxury-500/50 transition-all duration-300 overflow-hidden relative">
+                        <div class="glass p-6 rounded-2xl group hover:border-luxury-500/50 transition-all duration-300 overflow-hidden relative shadow-sm">
                             <div class="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-20 transition-opacity">
-                                <i :class="stat.icon" class="text-6xl text-luxury-400"></i>
+                                <i :class="stat.icon" class="text-6xl text-luxury-500"></i>
                             </div>
-                            <h3 class="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] mb-3" x-text="stat.label"></h3>
-                            <p class="text-3xl font-black text-white tracking-tighter" x-text="stat.value"></p>
+                            <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3" x-text="stat.label"></h3>
+                            <p class="text-3xl font-black text-slate-900 dark:text-white tracking-tighter" x-text="stat.value"></p>
                             <div class="mt-4 flex items-center gap-2">
-                                <span class="text-[10px] font-bold py-0.5 px-2 rounded bg-green-500/10 text-green-400" x-text="stat.trend"></span>
-                                <span class="text-[10px] font-medium text-slate-500" x-text="stat.context"></span>
+                                <span class="text-[10px] font-bold py-0.5 px-2 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" x-text="stat.trend"></span>
+                                <span class="text-[10px] font-medium text-slate-400" x-text="stat.context"></span>
                             </div>
                         </div>
                     </template>
                 </div>
 
-                <!-- View: Overview / Tables -->
+                <!-- Views Container -->
                 <div class="space-y-10">
-                    
                     <!-- USER SECTION -->
                     <section x-show="view === 'overview' || view === 'users'" x-transition>
-                        <div class="glass rounded-2xl overflow-hidden shadow-2xl">
-                            <div class="px-8 py-6 border-b border-slate-800/60 bg-slate-900/40 flex items-center justify-between">
-                                <div class="flex items-center gap-3">
-                                    <i class="fa-solid fa-users-viewfinder text-luxury-400"></i>
-                                    <h2 class="text-lg font-bold text-white uppercase tracking-tight">Active User Directory</h2>
-                                </div>
-                                <div class="relative max-w-xs w-full hidden sm:block">
-                                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
-                                    <input type="text" placeholder="Filter by identity..." class="w-full bg-slate-950 border border-slate-800 rounded-lg py-2 pl-9 pr-4 text-xs focus:ring-1 focus:ring-luxury-500 outline-none">
-                                </div>
+                        <div class="glass rounded-2xl overflow-hidden shadow-xl">
+                            <div class="px-8 py-6 border-b border-slate-200 dark:border-slate-800/60 bg-white/50 dark:bg-slate-900/40 flex items-center justify-between">
+                                <h2 class="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">Active User Directory</h2>
                             </div>
                             <div class="overflow-x-auto">
                                 <table class="w-full text-left">
-                                    <thead class="bg-slate-900/20 text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                                    <thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
                                         <tr>
-                                            <th class="px-8 py-4">Identity Profile</th>
-                                            <th class="px-8 py-4">Status</th>
-                                            <th class="px-8 py-4 text-center">Active Policy</th>
-                                            <th class="px-8 py-4">Created At</th>
-                                            <th class="px-8 py-4 text-right">Control</th>
+                                            <th class="px-8 py-4">Identity</th>
+                                            <th class="px-8 py-4">Security Status</th>
+                                            <th class="px-8 py-4 text-center">Assigned Policy</th>
+                                            <th class="px-8 py-4">Creation</th>
+                                            <th class="px-8 py-4 text-right">Access</th>
                                         </tr>
                                     </thead>
-                                    <tbody class="divide-y divide-slate-800/40">
+                                    <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40">
                                         <template x-for="user in users" :key="user.id">
-                                            <tr class="hover:bg-slate-800/20 transition-colors group">
+                                            <tr class="hover:bg-white dark:hover:bg-slate-800/20 transition-colors group text-sm">
                                                 <td class="px-8 py-5">
                                                     <div class="flex items-center gap-4">
-                                                        <div class="luxury-gradient h-10 w-10 rounded-xl flex items-center justify-center font-bold text-white shadow-lg group-hover:scale-110 transition-transform" x-text="user.id[0].toUpperCase()"></div>
-                                                        <div class="flex flex-col">
-                                                            <span class="text-sm font-bold text-white" x-text="user.id"></span>
-                                                            <span class="text-[10px] text-slate-500 font-mono" x-text="'UID: ' + user.id.split('@')[0]"></span>
-                                                        </div>
+                                                        <div class="luxury-gradient h-9 w-9 rounded-xl flex items-center justify-center font-black text-white shadow-md" x-text="user.id[0].toUpperCase()"></div>
+                                                        <span class="font-bold text-slate-700 dark:text-slate-200" x-text="user.id"></span>
                                                     </div>
                                                 </td>
                                                 <td class="px-8 py-5">
                                                     <button @click="toggleUserStatus(user)" 
-                                                            :class="user.is_active ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-rose-500/10 text-rose-400 border-rose-500/30'"
-                                                            class="border px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter transition-all hover:scale-105 active:scale-95"
-                                                            x-text="user.is_active ? 'Online / Active' : 'Suspended'">
+                                                            :class="user.is_active ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'"
+                                                            class="border px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tight transition-all"
+                                                            x-text="user.is_active ? 'Verified' : 'Suspended'">
                                                     </button>
                                                 </td>
                                                 <td class="px-8 py-5 text-center">
                                                     <select x-model="user.policy_id" @change="updateUserPolicy(user)" 
-                                                            class="bg-slate-900 border border-slate-800 text-luxury-300 text-[11px] font-bold py-1 px-3 rounded-lg focus:ring-1 focus:ring-luxury-500 outline-none cursor-pointer">
+                                                            class="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-luxury-600 dark:text-luxury-300 text-[11px] font-bold py-1 px-3 rounded-lg outline-none">
                                                         <template x-for="p in policies" :key="p.id">
-                                                            <option :value="p.id" x-text="p.name" :selected="user.policy_id === p.id"></option>
+                                                            <option :value="p.id" x-text="p.name"></option>
                                                         </template>
                                                     </select>
                                                 </td>
-                                                <td class="px-8 py-5 text-sm text-slate-500" x-text="formatDate(user.created_at)"></td>
+                                                <td class="px-8 py-5 text-slate-400" x-text="formatDate(user.created_at)"></td>
                                                 <td class="px-8 py-5 text-right">
-                                                    <button @click="toggleUserStatus(user)" class="text-slate-600 hover:text-rose-500 transition-colors">
-                                                        <i class="fa-solid fa-ban"></i>
+                                                    <button @click="toggleUserStatus(user)" class="text-slate-300 hover:text-rose-500 transition-colors">
+                                                        <i class="fa-solid fa-shield-slash"></i>
                                                     </button>
                                                 </td>
                                             </tr>
@@ -252,71 +245,53 @@
                         </div>
                     </section>
 
-                    <!-- GROUP SECTION -->
+                    <!-- Other sections (Groups, Policies, Logs) follow same luxury-glass pattern -->
                     <section x-show="view === 'groups'" x-transition>
                         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
                             <div class="lg:col-span-4">
-                                <div class="glass p-8 rounded-2xl border-luxury-500/20">
-                                    <h3 class="text-lg font-black text-white mb-6 uppercase tracking-tighter">Define Group Mapping</h3>
+                                <div class="glass p-8 rounded-2xl shadow-lg border-luxury-500/10">
+                                    <h3 class="text-sm font-black text-slate-900 dark:text-white mb-6 uppercase tracking-widest">Map Groups</h3>
                                     <form @submit.prevent="saveGroupPolicy" class="space-y-6">
                                         <div class="space-y-2">
-                                            <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest">OpenWebUI Origin Group</label>
-                                            <select x-model="newGroupPolicy.group_name" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-luxury-500 outline-none appearance-none">
-                                                <option value="">-- Choose Origin Group --</option>
+                                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">WebUI Group</label>
+                                            <select x-model="newGroupPolicy.group_name" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-luxury-500">
+                                                <option value="">-- Select Group --</option>
                                                 <template x-for="g in webuiGroups" :key="g.name">
                                                     <option :value="g.name" x-text="g.name"></option>
                                                 </template>
                                             </select>
                                         </div>
                                         <div class="space-y-2">
-                                            <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Target Enforcement Policy</label>
-                                            <select x-model="newGroupPolicy.policy_id" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-luxury-500 outline-none appearance-none">
-                                                <option value="">-- Choose Access Policy --</option>
-                                                <template x-for="p in policies" :key="p.id">
-                                                    <option :value="p.id" x-text="p.name"></option>
-                                                </template>
-                                            </select>
+                                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Priority Index</label>
+                                            <input type="number" x-model.number="newGroupPolicy.priority" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-white">
                                         </div>
-                                        <div class="space-y-2">
-                                            <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Resolution Priority</label>
-                                            <div class="flex items-center gap-4">
-                                                <input type="range" min="0" max="100" x-model.number="newGroupPolicy.priority" class="flex-1 accent-luxury-500">
-                                                <span class="text-xl font-bold text-white w-8 text-center" x-text="newGroupPolicy.priority"></span>
-                                            </div>
-                                        </div>
-                                        <button type="submit" class="luxury-gradient w-full py-4 rounded-xl font-bold text-white shadow-xl hover:scale-[1.02] active:scale-95 transition-all">
-                                            Link Architecture <i class="fa-solid fa-link ml-2"></i>
+                                        <button type="submit" class="luxury-gradient w-full py-4 rounded-xl font-black text-xs uppercase tracking-widest text-white shadow-xl hover:brightness-110 active:scale-95 transition-all">
+                                            Execute Mapping
                                         </button>
                                     </form>
                                 </div>
                             </div>
                             <div class="lg:col-span-8">
-                                <div class="glass rounded-2xl overflow-hidden">
-                                    <div class="px-8 py-5 border-b border-slate-800/60 bg-slate-900/40">
-                                        <h3 class="text-sm font-black text-white uppercase tracking-widest">Synchronized Group Rules</h3>
-                                    </div>
+                                <div class="glass rounded-2xl overflow-hidden shadow-lg">
                                     <table class="w-full">
-                                        <thead class="bg-slate-900/10 text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em]">
+                                        <thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] text-slate-400 font-black uppercase tracking-[0.2em]">
                                             <tr>
-                                                <th class="px-8 py-4">Group Identity</th>
-                                                <th class="px-8 py-4">Enforcement Policy</th>
-                                                <th class="px-8 py-4 text-center">Priority</th>
-                                                <th class="px-8 py-4 text-right">Actions</th>
+                                                <th class="px-8 py-4">Group</th>
+                                                <th class="px-8 py-4">Policy</th>
+                                                <th class="px-8 py-4 text-center">Rank</th>
+                                                <th class="px-8 py-4 text-right">Delete</th>
                                             </tr>
                                         </thead>
-                                        <tbody class="divide-y divide-slate-800/40">
+                                        <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40">
                                             <template x-for="gp in groupPolicies" :key="gp.group_name">
-                                                <tr class="hover:bg-slate-800/20">
-                                                    <td class="px-8 py-5 flex items-center gap-3">
-                                                        <i class="fa-solid fa-folder-tree text-luxury-400/50"></i>
-                                                        <span class="font-bold text-white" x-text="gp.group_name"></span>
-                                                    </td>
+                                                <tr class="hover:bg-white dark:hover:bg-slate-800/20 transition-colors">
+                                                    <td class="px-8 py-5 font-bold text-slate-700 dark:text-white" x-text="gp.group_name"></td>
                                                     <td class="px-8 py-5">
-                                                        <span class="bg-luxury-500/10 text-luxury-400 px-3 py-1 rounded text-xs font-bold" x-text="gp.policy_id"></span>
+                                                        <span class="bg-luxury-500/10 text-luxury-600 dark:text-luxury-400 px-3 py-1 rounded-lg text-[10px] font-black uppercase" x-text="gp.policy_id"></span>
                                                     </td>
-                                                    <td class="px-8 py-5 text-center font-mono text-white" x-text="gp.priority"></td>
+                                                    <td class="px-8 py-5 text-center font-mono text-slate-600 dark:text-slate-200" x-text="gp.priority"></td>
                                                     <td class="px-8 py-5 text-right">
-                                                        <button @click="deleteGroupMapping(gp.group_name)" class="text-rose-500/40 hover:text-rose-500 transition-colors">
+                                                        <button @click="deleteGroupMapping(gp.group_name)" class="text-rose-400/50 hover:text-rose-500 transition-colors">
                                                             <i class="fa-solid fa-trash-can"></i>
                                                         </button>
                                                     </td>
@@ -331,36 +306,30 @@
 
                     <!-- LOGS SECTION -->
                     <section x-show="view === 'overview' || view === 'logs'" x-transition>
-                        <div class="glass rounded-2xl overflow-hidden shadow-2xl">
-                            <div class="px-8 py-6 border-b border-slate-800/60 bg-slate-900/40 flex items-center justify-between">
-                                <div class="flex items-center gap-3">
-                                    <i class="fa-solid fa-terminal text-luxury-400"></i>
-                                    <h2 class="text-lg font-bold text-white uppercase tracking-tight">Real-time Usage Stream</h2>
-                                </div>
-                                <span class="px-3 py-1 bg-slate-900 border border-slate-800 text-[10px] font-bold text-slate-500 rounded">RETAINING LAST 100 EVENTS</span>
+                        <div class="glass rounded-2xl overflow-hidden shadow-xl">
+                            <div class="px-8 py-6 border-b border-slate-200 dark:border-slate-800/60 bg-white/50 dark:bg-slate-900/40 flex items-center justify-between">
+                                <h2 class="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">Network Usage Analytics</h2>
                             </div>
                             <div class="overflow-x-auto">
                                 <table class="w-full text-left">
-                                    <thead class="bg-slate-900/20 text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                                    <thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                                         <tr>
-                                            <th class="px-8 py-4">Timestamp</th>
+                                            <th class="px-8 py-4">Time</th>
                                             <th class="px-8 py-4">User</th>
-                                            <th class="px-8 py-4">Model Engine</th>
+                                            <th class="px-8 py-4">Engine</th>
                                             <th class="px-8 py-4 text-center">Tokens</th>
-                                            <th class="px-8 py-4 text-right">Net Cost</th>
+                                            <th class="px-8 py-4 text-right">Cost</th>
                                         </tr>
                                     </thead>
-                                    <tbody class="divide-y divide-slate-800/40 font-mono">
+                                    <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40 font-mono text-[11px]">
                                         <template x-for="log in usage" :key="log.id">
-                                            <tr class="hover:bg-slate-800/20 transition-colors text-[13px]">
-                                                <td class="px-8 py-4 text-slate-500" x-text="formatDateTimeShort(log.ts)"></td>
-                                                <td class="px-8 py-4 font-bold text-slate-300" x-text="log.user_id.split('@')[0]"></td>
-                                                <td class="px-8 py-4">
-                                                    <span class="px-2 py-1 bg-slate-900 rounded border border-slate-800 text-blue-400 text-[11px]" x-text="log.model.split('/')[1] || log.model"></span>
-                                                </td>
-                                                <td class="px-8 py-4 text-center font-bold text-white" x-text="formatNumber(log.total_tokens)"></td>
+                                            <tr class="hover:bg-white dark:hover:bg-slate-800/20 transition-colors">
+                                                <td class="px-8 py-4 text-slate-400" x-text="formatDateTimeShort(log.ts)"></td>
+                                                <td class="px-8 py-4 font-bold text-slate-600 dark:text-slate-300" x-text="log.user_id"></td>
+                                                <td class="px-8 py-4 text-blue-500 dark:text-blue-400" x-text="log.model.split('/')[1] || log.model"></td>
+                                                <td class="px-8 py-4 text-center font-bold text-slate-700 dark:text-white" x-text="formatNumber(log.total_tokens)"></td>
                                                 <td class="px-8 py-4 text-right">
-                                                    <span class="text-emerald-400 font-bold" x-text="'$' + parseFloat(log.total_cost || 0).toFixed(6)"></span>
+                                                    <span class="text-emerald-600 dark:text-emerald-400 font-bold" x-text="'$' + parseFloat(log.total_cost || 0).toFixed(6)"></span>
                                                 </td>
                                             </tr>
                                         </template>
@@ -369,7 +338,6 @@
                             </div>
                         </div>
                     </section>
-
                 </div>
             </div>
         </main>
@@ -379,6 +347,7 @@
         function dashboard() {
             return {
                 view: 'overview',
+                darkMode: localStorage.getItem('theme') === 'dark',
                 adminKey: localStorage.getItem('adminKey') || '',
                 keyInput: '',
                 loading: false,
@@ -400,10 +369,10 @@
 
                 get statsCards() {
                     return [
-                        { label: 'Total Fleet', value: this.stats.totalUsers, icon: 'fa-solid fa-users', trend: '+12%', context: 'Active users tracked' },
-                        { label: 'Security Pols', value: this.stats.totalPolicies, icon: 'fa-solid fa-vault', trend: 'Stable', context: 'Active enforcement' },
-                        { label: 'Token Burn', value: this.formatNumber(this.stats.totalTokens), icon: 'fa-solid fa-fire', trend: '-5%', context: 'Last 100 req' },
-                        { label: 'Accrued Cost', value: '$' + this.stats.totalCost.toFixed(3), icon: 'fa-solid fa-dollar-sign', trend: 'Audit Req', context: 'Historical total' }
+                        { label: 'Total Fleet', value: this.stats.totalUsers, icon: 'fa-solid fa-users', trend: '+0%', context: 'Identities' },
+                        { label: 'Guardrails', value: this.stats.totalPolicies, icon: 'fa-solid fa-vault', trend: 'Active', context: 'Security Pols' },
+                        { label: 'Data Burn', value: this.formatNumber(this.stats.totalTokens), icon: 'fa-solid fa-fire', trend: 'Live', context: 'Tokens used' },
+                        { label: 'Net Exposure', value: '$' + this.stats.totalCost.toFixed(3), icon: 'fa-solid fa-dollar-sign', trend: 'Billing', context: 'Historical' }
                     ];
                 },
 
@@ -412,6 +381,11 @@
                         await this.refreshAll();
                         setInterval(() => this.refreshAll(), 15000);
                     }
+                },
+
+                toggleTheme() {
+                    this.darkMode = !this.darkMode;
+                    localStorage.setItem('theme', this.darkMode ? 'dark' : 'light');
                 },
 
                 saveKey() {
@@ -436,18 +410,13 @@
                             fetch('/admin/group-policies', { headers }).then(r => r.json()),
                             fetch('/admin/openwebui-groups', { headers }).then(r => r.json())
                         ]);
-                        
-                        this.users = users;
-                        this.policies = policies;
-                        this.usage = usage;
-                        this.groupPolicies = gps;
-                        this.webuiGroups = wgs;
-
+                        this.users = users; this.policies = policies; this.usage = usage;
+                        this.groupPolicies = gps; this.webuiGroups = wgs;
                         this.stats.totalUsers = users.length;
                         this.stats.totalPolicies = policies.length;
                         this.stats.totalTokens = usage.reduce((sum, log) => sum + (parseInt(log.total_tokens) || 0), 0);
                         this.stats.totalCost = usage.reduce((sum, log) => sum + (parseFloat(log.total_cost) || 0), 0);
-                    } catch (e) { console.error('Sync error:', e); } finally { this.loading = false; }
+                    } catch (e) { console.error(e); } finally { this.loading = false; }
                 },
 
                 async toggleUserStatus(user) {
@@ -502,15 +471,6 @@
                     if (!confirm('Remove group mapping?')) return;
                     await fetch(`/admin/group-policies/${name}`, { method: 'DELETE', headers: { 'x-admin-key': this.adminKey } });
                     await this.refreshAll();
-                },
-
-                viewTitle() {
-                    return this.menuItems.find(i => i.id === this.view).label;
-                },
-
-                viewSubtitle() {
-                    const subs = { overview: 'Strategic overview of entire AI network.', users: 'Managing identity permissions.', groups: 'Cross-cluster organization sync.', policies: 'Advanced guardrail definitions.', logs: 'High-fidelity audit stream.' };
-                    return subs[this.view] || '';
                 },
 
                 formatNumber(n) { return new Intl.NumberFormat().format(n); },
