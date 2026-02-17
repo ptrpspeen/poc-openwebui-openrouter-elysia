@@ -24,6 +24,8 @@ spec:
           value: "false"
         - name: ENABLE_FORWARD_USER_INFO_HEADERS
           value: "true"
+        - name: ENABLE_OLLAMA
+          value: "false"
         # Shared Database (Optional: recommended to use Postgres for global scale)
         # But for storage scaling:
         - name: RAG_WEB_SEARCH_ENGINE
