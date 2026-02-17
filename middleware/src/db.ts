@@ -1,28 +1,22 @@
 import { Pool } from "pg";
 
 const connectionString = process.env.DATABASE_URL || "postgresql://admin:adminpassword@localhost:5432/ai_control";
+const webuiConnectionString = process.env.WEBUI_DATABASE_URL;
 
-export const pool = new Pool({
-  connectionString,
-});
+export const pool = new Pool({ connectionString });
+export const webuiPool = webuiConnectionString ? new Pool({ connectionString: webuiConnectionString }) : null;
 
 // Helper for easier queries
 export const db = {
-  query: async (text: string, params?: any[]) => {
-    const res = await pool.query(text, params);
-    return res;
-  },
-  get: async (text: string, params?: any[]) => {
-    const res = await pool.query(text, params);
-    return res.rows[0];
-  },
-  run: async (text: string, params?: any[]) => {
-    return await pool.query(text, params);
-  },
-  all: async (text: string, params?: any[]) => {
-    const res = await pool.query(text, params);
-    return res.rows;
-  }
+  query: async (text: string, params?: any[]) => await pool.query(text, params),
+  get: async (text: string, params?: any[]) => (await pool.query(text, params)).rows[0],
+  run: async (text: string, params?: any[]) => await pool.query(text, params),
+  all: async (text: string, params?: any[]) => (await pool.query(text, params)).rows
+};
+
+export const webuiDb = {
+    get: async (text: string, params?: any[]) => webuiPool ? (await webuiPool.query(text, params)).rows[0] : null,
+    all: async (text: string, params?: any[]) => webuiPool ? (await webuiPool.query(text, params)).rows : []
 };
 
 export async function initDb() {
@@ -72,13 +66,6 @@ export async function initDb() {
       ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
-
-  // Migration: Add total_cost column if it doesn't exist
-  try {
-    await db.run("ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS total_cost NUMERIC(15, 10) DEFAULT 0");
-  } catch (e) {
-    console.log("Column total_cost might already exist or migration skipped.");
-  }
 
   // Insert default policy
   const defaultPolicy = await db.get("SELECT * FROM policies WHERE id = $1", ['default']);

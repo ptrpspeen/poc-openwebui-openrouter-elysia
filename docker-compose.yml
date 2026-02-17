@@ -28,6 +28,7 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - REDIS_URL=redis://redis:6379
       - DATABASE_URL=postgresql://admin:adminpassword@db:5432/ai_control
+      - WEBUI_DATABASE_URL=postgresql://admin:adminpassword@db:5432/openwebui
       - OPENROUTER_HTTP_REFERER=http://localhost:3000
       - OPENROUTER_X_TITLE=OpenWebUI-Local-POC
       - LOG_MODE=metadata
@@ -45,6 +46,7 @@ services:
       - OPENAI_API_KEY=dummy_key
       - WEBUI_TELEMETRY=false
       - ENABLE_FORWARD_USER_INFO_HEADERS=true
+      - DATABASE_URL=postgresql://admin:adminpassword@db:5432/openwebui
     volumes:
       - openwebui_data:/app/backend/data
     ports:

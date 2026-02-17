@@ -33,6 +33,8 @@ spec:
         - configMapRef:
             name: middleware-config
         env:
+        - name: WEBUI_DATABASE_URL
+          value: "postgresql://admin:adminpassword@postgres-service:5432/openwebui"
         - name: OPENROUTER_API_KEY
           valueFrom:
             secretKeyRef:

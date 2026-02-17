@@ -1,7 +1,7 @@
 import { Elysia } from "elysia";
 import { staticPlugin } from "@elysiajs/static";
 import { cors } from "@elysiajs/cors";
-import { db, initDb } from "./db";
+import { db, webuiDb, initDb } from "./db";
 import { redis } from "./redis";
 
 const OPENROUTER_BASE = "https://openrouter.ai/api";
@@ -45,6 +45,22 @@ function getUserFromJWT(token: string): string | null {
   } catch { return null; }
 }
 
+async function getUserGroups(userId: string): Promise<string[]> {
+    try {
+        const rows = await webuiDb.all(`
+            SELECT g.name 
+            FROM "user" u 
+            JOIN group_member gm ON u.id = gm.user_id 
+            JOIN "group" g ON gm.group_id = g.id 
+            WHERE u.email = $1 OR u.id = $1
+        `, [userId]);
+        return rows.map((r: any) => r.name);
+    } catch (e) {
+        console.error("Failed to fetch user groups:", e);
+        return [];
+    }
+}
+
 async function ensureUserExists(userId: string) {
   const user = await db.get("SELECT * FROM users WHERE id = $1", [userId]);
   if (!user) {
@@ -53,16 +69,15 @@ async function ensureUserExists(userId: string) {
   }
 }
 
-async function checkAccess(userId: string): Promise<{ allowed: boolean; reason?: string }> {
+async function checkAccess(userId: string, role?: string): Promise<{ allowed: boolean; reason?: string; groups: string[] }> {
   const user: any = await db.get("SELECT * FROM users WHERE id = $1", [userId]);
-  
-  if (!user) return { allowed: false, reason: `User not found: ${userId}` };
-  if (!user.is_active || user.is_active === 0) return { allowed: false, reason: "User account is inactive" };
+  const groups = await getUserGroups(userId);
+
+  if (!user || !user.is_active) return { allowed: false, reason: "User inactive or not found", groups };
 
   const policy: any = await db.get("SELECT * FROM policies WHERE id = $1", [user.policy_id]);
-  if (!policy) return { allowed: false, reason: "No policy assigned" };
+  if (!policy) return { allowed: false, reason: "No policy assigned", groups };
 
-  // Check Quota in Redis
   const dailyKey = `usage:user:${userId}:daily:${new Date().toISOString().split('T')[0]}`;
   const monthlyKey = `usage:user:${userId}:monthly:${new Date().toISOString().slice(0, 7)}`;
 
@@ -72,14 +87,14 @@ async function checkAccess(userId: string): Promise<{ allowed: boolean; reason?:
   ]);
 
   if (policy.daily_token_limit > 0 && dailyUsage >= parseInt(policy.daily_token_limit)) {
-    return { allowed: false, reason: "Daily token limit exceeded" };
+    return { allowed: false, reason: "Daily token limit exceeded", groups };
   }
 
   if (policy.monthly_token_limit > 0 && monthlyUsage >= parseInt(policy.monthly_token_limit)) {
-    return { allowed: false, reason: "Monthly token limit exceeded" };
+    return { allowed: false, reason: "Monthly token limit exceeded", groups };
   }
 
-  return { allowed: true };
+  return { allowed: true, groups };
 }
 
 function logEvent(event: Record<string, unknown>) {
@@ -92,7 +107,7 @@ async function processUsage(userId: string | null, model: string, usage: any) {
   const dailyKey = `usage:user:${userId}:daily:${new Date().toISOString().split('T')[0]}`;
   const monthlyKey = `usage:user:${userId}:monthly:${new Date().toISOString().slice(0, 7)}`;
   const total = usage.total_tokens || (usage.prompt_tokens + usage.completion_tokens);
-  const cost = usage.total_cost || 0;
+  const cost = usage.cost || usage.total_cost || 0;
   
   await Promise.all([
     redis.incrby(dailyKey, total),
@@ -105,7 +120,7 @@ async function processUsage(userId: string | null, model: string, usage: any) {
       total_cost: cost, ts: new Date().toISOString()
     }))
   ]);
-  logEvent({ type: "usage_tracked", user_id: userId, model, total, cost });
+  console.log(`💰 Usage Tracked: User=${userId}, Model=${model}, Tokens=${total}, Cost=${cost}`);
 }
 
 async function startBackgroundWorker() {
@@ -176,7 +191,6 @@ const app = new Elysia()
     if (!OPENROUTER_API_KEY) { set.status = 500; return "OPENROUTER_API_KEY not set"; }
     const path = (params as { "*": string })["*"];
     
-    // Fast path for models list - No DB checks
     if (path === "models" && request.method === "GET") {
         const upstreamResponse = await fetch(`${OPENROUTER_BASE}/v1/models`, {
             headers: { "Authorization": `Bearer ${OPENROUTER_API_KEY}`, "Accept": "application/json" }
@@ -189,6 +203,7 @@ const app = new Elysia()
 
     const upstreamUrl = `${OPENROUTER_BASE}/v1/${path}`;
     let rawUserId = request.headers.get("x-openwebui-user-email") || request.headers.get("x-openwebui-user-id");
+    let userRole = request.headers.get("x-openwebui-user-role");
     let userId: string | null = rawUserId ? rawUserId.toLowerCase().trim() : null;
 
     if (!userId) {
@@ -204,8 +219,10 @@ const app = new Elysia()
       body = await request.json();
       modelName = body.model || "unknown";
       if (userId) {
-        const access = await checkAccess(userId);
+        const access = await checkAccess(userId, userRole || undefined);
         if (!access.allowed) { set.status = 403; return { error: access.reason }; }
+        // Pass group info to AI if needed or use for internal logic
+        console.log(`User ${userId} groups:`, access.groups);
         body.user = userId;
       }
     }
