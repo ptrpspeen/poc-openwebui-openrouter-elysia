@@ -1,4 +1,6 @@
 import { Elysia } from "elysia";
+import { staticPlugin } from "@elysiajs/static";
+import { cors } from "@elysiajs/cors";
 import { db, initDb } from "./db";
 import { redis } from "./redis";
 
@@ -166,6 +168,8 @@ async function* streamWithUsageTracking(response: Response, userId: string | nul
 }
 
 const app = new Elysia()
+  .use(cors())
+  .use(staticPlugin())
   .all("/v1/*", async ({ request, params, set }) => {
     if (!OPENROUTER_API_KEY) { set.status = 500; return "OPENROUTER_API_KEY not set"; }
     const path = (params as { "*": string })["*"];
@@ -226,12 +230,13 @@ const app = new Elysia()
       .post("/policies", async ({ body }: any) => {
         const { id, name, daily_token_limit, monthly_token_limit, allowed_models } = body;
         await db.run(
-          "INSERT INTO policies (id, name, daily_token_limit, monthly_token_limit, allowed_models) VALUES ($1, $2, $3, $4, $5)",
+          "INSERT INTO policies (id, name, daily_token_limit, monthly_token_limit, allowed_models) VALUES ($1, $2, $3, $4, $5) ON CONFLICT(id) DO UPDATE SET name=excluded.name, daily_token_limit=excluded.daily_token_limit, monthly_token_limit=excluded.monthly_token_limit, allowed_models=excluded.allowed_models",
           [id, name, daily_token_limit, monthly_token_limit, allowed_models]
         );
         return { success: true };
       })
   )
+  .get("/", () => Bun.file("public/index.html"))
   .listen(8080);
 
 console.log(`🦊 AI Control Plane running at http://localhost:${app.server?.port}`);
