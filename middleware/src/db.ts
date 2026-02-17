@@ -68,9 +68,17 @@ export async function initDb() {
       prompt_tokens INTEGER,
       completion_tokens INTEGER,
       total_tokens INTEGER,
+      total_cost NUMERIC(15, 10) DEFAULT 0,
       ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Migration: Add total_cost column if it doesn't exist
+  try {
+    await db.run("ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS total_cost NUMERIC(15, 10) DEFAULT 0");
+  } catch (e) {
+    console.log("Column total_cost might already exist or migration skipped.");
+  }
 
   // Insert default policy
   const defaultPolicy = await db.get("SELECT * FROM policies WHERE id = $1", ['default']);

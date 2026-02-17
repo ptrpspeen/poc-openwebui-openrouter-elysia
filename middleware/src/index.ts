@@ -92,6 +92,7 @@ async function processUsage(userId: string | null, model: string, usage: any) {
   const dailyKey = `usage:user:${userId}:daily:${new Date().toISOString().split('T')[0]}`;
   const monthlyKey = `usage:user:${userId}:monthly:${new Date().toISOString().slice(0, 7)}`;
   const total = usage.total_tokens || (usage.prompt_tokens + usage.completion_tokens);
+  const cost = usage.total_cost || 0;
   
   await Promise.all([
     redis.incrby(dailyKey, total),
@@ -100,10 +101,11 @@ async function processUsage(userId: string | null, model: string, usage: any) {
     redis.expire(monthlyKey, 3456000),
     redis.lpush("usage_queue", JSON.stringify({
       user_id: userId, model, prompt_tokens: usage.prompt_tokens,
-      completion_tokens: usage.completion_tokens, total_tokens: total, ts: new Date().toISOString()
+      completion_tokens: usage.completion_tokens, total_tokens: total, 
+      total_cost: cost, ts: new Date().toISOString()
     }))
   ]);
-  logEvent({ type: "usage_tracked", user_id: userId, model, total });
+  logEvent({ type: "usage_tracked", user_id: userId, model, total, cost });
 }
 
 async function startBackgroundWorker() {
@@ -114,8 +116,8 @@ async function startBackgroundWorker() {
       if (item) {
         const data = JSON.parse(item);
         await db.run(
-          "INSERT INTO usage_logs (user_id, model, prompt_tokens, completion_tokens, total_tokens, ts) VALUES ($1, $2, $3, $4, $5, $6)",
-          [data.user_id, data.model, data.prompt_tokens, data.completion_tokens, data.total_tokens, data.ts]
+          "INSERT INTO usage_logs (user_id, model, prompt_tokens, completion_tokens, total_tokens, total_cost, ts) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+          [data.user_id, data.model, data.prompt_tokens, data.completion_tokens, data.total_tokens, data.total_cost, data.ts]
         );
       } else {
         await new Promise(r => setTimeout(r, 5000));

@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: openwebui
 spec:
-  replicas: 2 # Scaled out!
+  replicas: 2
   selector:
     matchLabels:
       app: openwebui
@@ -25,12 +25,17 @@ spec:
         - name: ENABLE_FORWARD_USER_INFO_HEADERS
           value: "true"
         - name: ENABLE_OLLAMA
-          value: "false"
-        # Shared Database (Optional: recommended to use Postgres for global scale)
-        # But for storage scaling:
+          value: "False"
+        - name: OLLAMA_BASE_URL
+          value: "http://127.0.0.1:1" # Immediate failure
+        - name: OLLAMA_BASE_URLS
+          value: ""
         - name: RAG_WEB_SEARCH_ENGINE
           value: "google"
-        # MinIO Configuration
+        # Persistence for DB and HF Cache
+        - name: DATABASE_URL
+          value: "postgresql://admin:adminpassword@postgres-service:5432/openwebui"
+        # MinIO Configuration for Assets
         - name: OBJECT_STORAGE_ENABLED
           value: "true"
         - name: OBJECT_STORAGE_ENDPOINT
@@ -45,6 +50,13 @@ spec:
           value: "false"
         ports:
         - containerPort: 8080
+        volumeMounts:
+        - name: openwebui-storage
+          mountPath: /app/backend/data
+      volumes:
+      - name: openwebui-storage
+        persistentVolumeClaim:
+          claimName: openwebui-pvc
 ---
 apiVersion: v1
 kind: Service
