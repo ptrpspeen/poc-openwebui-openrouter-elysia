@@ -41,7 +41,7 @@ function getUserFromJWT(token: string): string | null {
     const decoded = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
     const data = JSON.parse(decoded);
     const id = data.email || data.id || data.sub || null;
-    return id ? id.toLowerCase() : null; // Lowercase for consistency
+    return id ? id.toLowerCase() : null;
   } catch { return null; }
 }
 
@@ -53,27 +53,16 @@ async function ensureUserExists(userId: string) {
   }
 }
 
-async function checkAccess(userId: string, model: string): Promise<{ allowed: boolean; reason?: string }> {
-  console.log(`🔍 Checking access for user: [${userId}] model: [${model}]`);
+async function checkAccess(userId: string): Promise<{ allowed: boolean; reason?: string }> {
   const user: any = await db.get("SELECT * FROM users WHERE id = $1", [userId]);
   
-  if (!user) {
-    console.log(`❌ User not found in DB: ${userId}`);
-    return { allowed: false, reason: `User not found: ${userId}` };
-  }
-  
-  if (!user.is_active || user.is_active === 0) {
-    console.log(`❌ User inactive: ${userId}`);
-    return { allowed: false, reason: "User account is inactive" };
-  }
+  if (!user) return { allowed: false, reason: `User not found: ${userId}` };
+  if (!user.is_active || user.is_active === 0) return { allowed: false, reason: "User account is inactive" };
 
   const policy: any = await db.get("SELECT * FROM policies WHERE id = $1", [user.policy_id]);
   if (!policy) return { allowed: false, reason: "No policy assigned" };
 
-  if (policy.allowed_models !== "*" && !policy.allowed_models.split(",").includes(model)) {
-    return { allowed: false, reason: `Model ${model} not allowed by policy` };
-  }
-
+  // Check Quota in Redis
   const dailyKey = `usage:user:${userId}:daily:${new Date().toISOString().split('T')[0]}`;
   const monthlyKey = `usage:user:${userId}:monthly:${new Date().toISOString().slice(0, 7)}`;
 
@@ -184,8 +173,19 @@ const app = new Elysia()
   .all("/v1/*", async ({ request, params, set }) => {
     if (!OPENROUTER_API_KEY) { set.status = 500; return "OPENROUTER_API_KEY not set"; }
     const path = (params as { "*": string })["*"];
-    const upstreamUrl = `${OPENROUTER_BASE}/v1/${path}`;
+    
+    // Fast path for models list - No DB checks
+    if (path === "models" && request.method === "GET") {
+        const upstreamResponse = await fetch(`${OPENROUTER_BASE}/v1/models`, {
+            headers: { "Authorization": `Bearer ${OPENROUTER_API_KEY}`, "Accept": "application/json" }
+        });
+        return new Response(await upstreamResponse.arrayBuffer(), { 
+            status: upstreamResponse.status, 
+            headers: cleanResponseHeaders(upstreamResponse.headers) 
+        });
+    }
 
+    const upstreamUrl = `${OPENROUTER_BASE}/v1/${path}`;
     let rawUserId = request.headers.get("x-openwebui-user-email") || request.headers.get("x-openwebui-user-id");
     let userId: string | null = rawUserId ? rawUserId.toLowerCase().trim() : null;
 
@@ -194,34 +194,36 @@ const app = new Elysia()
       if (authHeader.startsWith("Bearer ")) userId = getUserFromJWT(authHeader.split(" ")[1]);
     }
 
-    if (userId) {
-      await ensureUserExists(userId);
-    } else {
-      console.log("⚠️ No user identity found in headers or token");
-    }
+    if (userId) await ensureUserExists(userId);
+
     let body: any = null;
     let modelName = "unknown";
     if (request.method === "POST" && request.headers.get("content-type")?.includes("application/json")) {
       body = await request.json();
       modelName = body.model || "unknown";
       if (userId) {
-        const access = await checkAccess(userId, modelName);
+        const access = await checkAccess(userId);
         if (!access.allowed) { set.status = 403; return { error: access.reason }; }
         body.user = userId;
       }
     }
+
     const headers = cleanHeaders(request.headers);
     headers["Authorization"] = `Bearer ${OPENROUTER_API_KEY}`;
     headers["User-Agent"] = request.headers.get("user-agent") || "OpenWebUI-Middleware/1.0";
     if (OPENROUTER_HTTP_REFERER) headers["HTTP-Referer"] = OPENROUTER_HTTP_REFERER;
     if (OPENROUTER_X_TITLE) headers["X-Title"] = OPENROUTER_X_TITLE;
+
     const url = new URL(upstreamUrl);
     new URL(request.url).searchParams.forEach((v, k) => url.searchParams.set(k, v));
+
     const upstreamResponse = await fetch(url.toString(), {
       method: request.method, headers,
       body: body ? JSON.stringify(body) : (request.method === "GET" ? null : await request.arrayBuffer()),
     });
+
     const responseHeaders = cleanResponseHeaders(upstreamResponse.headers);
+
     if (upstreamResponse.headers.get("content-type")?.includes("text/event-stream")) {
       const stream = new ReadableStream({
         async start(controller) {
