@@ -3,223 +3,205 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Control Plane | Admin Dashboard</title>
+    <title>AI Control Plane | Admin</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
             darkMode: 'class',
             theme: {
                 extend: {
-                    fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
-                    colors: {
-                        luxury: { 50: '#f5f7ff', 100: '#ebf0fe', 200: '#ced9fd', 300: '#a1b6fb', 400: '#6d8bf7', 500: '#435df0', 600: '#2e3ee4', 700: '#252ecc', 800: '#2429a6', 900: '#222884', 950: '#14174d' }
-                    }
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: { luxury: { 500: '#435df0', 600: '#2e3ee4' } }
                 }
             }
         }
     </script>
     <style>
         [x-cloak] { display: none !important; }
-        .glass { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(0, 0, 0, 0.05); }
-        .dark .glass { background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .glass { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(8px); border: 1px solid rgba(0, 0, 0, 0.1); }
+        .dark .glass { background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); }
         .luxury-gradient { background: linear-gradient(135deg, #435df0 0%, #a855f7 100%); }
-        .glow { box-shadow: 0 0 20px rgba(67, 93, 240, 0.2); }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        .dark ::-webkit-scrollbar-thumb { background: #334155; }
     </style>
 </head>
-<body class="h-full text-slate-600 bg-slate-50 dark:text-slate-200 dark:bg-slate-950 transition-colors duration-300 font-sans">
-    
-    <!-- Auth Shield -->
-    <div x-show="!adminKey" class="fixed inset-0 z-[100] flex items-center justify-center bg-white dark:bg-slate-950 px-4" x-transition.opacity>
-        <div class="glass relative w-full max-w-md overflow-hidden rounded-2xl p-8 shadow-2xl">
-            <div class="mb-8 text-center">
-                <div class="luxury-gradient mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl shadow-lg glow text-white">
-                    <i class="fa-solid fa-vault text-2xl"></i>
-                </div>
-                <h2 class="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">Admin Access</h2>
-            </div>
-            <form @submit.prevent="saveKey" class="space-y-6">
-                <input type="password" x-model="keyInput" class="w-full bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-luxury-500 transition-all" placeholder="Secret Key">
-                <button type="submit" class="luxury-gradient w-full py-4 rounded-xl font-bold text-white shadow-lg hover:brightness-110 active:scale-[0.98] transition-all">Initialize Session</button>
+<body class="h-full bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+    <!-- Auth Modal -->
+    <div x-show="!adminKey" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4">
+        <div class="bg-white dark:bg-slate-900 p-8 rounded-2xl shadow-2xl max-w-sm w-full">
+            <h2 class="text-2xl font-bold mb-6 text-center">Admin Access</h2>
+            <form @submit.prevent="saveKey" class="space-y-4">
+                <input type="password" x-model="keyInput" placeholder="Enter Admin Key" class="w-full p-3 rounded-xl border dark:bg-slate-800 dark:border-slate-700">
+                <button type="submit" class="w-full luxury-gradient text-white py-3 rounded-xl font-bold shadow-lg">Login</button>
             </form>
         </div>
     </div>
 
-    <!-- Main App Container -->
-    <div x-show="adminKey" class="flex h-full" x-cloak>
-        <aside class="hidden md:flex w-72 flex-col bg-white dark:bg-slate-900/40 border-r border-slate-200 dark:border-slate-800/60 backdrop-blur-md">
-            <div class="p-8 flex items-center gap-3">
-                <div class="luxury-gradient h-10 w-10 rounded-xl flex items-center justify-center shadow-lg text-white"><i class="fa-solid fa-bolt"></i></div>
-                <div><h2 class="text-lg font-bold text-slate-900 dark:text-white">Clawdia</h2><p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Control Plane</p></div>
+    <div x-show="adminKey" x-cloak class="flex h-full">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-white dark:bg-slate-900 border-r dark:border-slate-800 flex flex-col">
+            <div class="p-6 font-bold text-xl flex items-center gap-2">
+                <div class="w-8 h-8 luxury-gradient rounded-lg flex items-center justify-center text-white"><i class="fa-solid fa-bolt text-sm"></i></div>
+                AI Control
             </div>
-            <nav class="flex-1 px-4 space-y-2 mt-4">
-                <template x-for="item in menuItems" :key="item.id">
-                    <button @click="view = item.id" :class="view === item.id ? 'bg-luxury-500/10 text-luxury-600 dark:text-luxury-400 border-l-4 border-luxury-500 shadow-sm' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/30 hover:text-slate-600 dark:hover:text-slate-300 border-l-4 border-transparent'" class="group flex w-full items-center px-4 py-3 text-sm font-semibold transition-all">
-                        <i :class="item.icon" class="mr-3 w-5 text-lg"></i><span x-text="item.label"></span>
-                    </button>
-                </template>
+            <nav class="flex-1 px-4 space-y-1">
+                <button @click="view = 'users'" :class="view === 'users' ? 'bg-slate-100 dark:bg-slate-800 text-blue-600' : ''" class="w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 transition"><i class="fa-solid fa-users"></i> Users</button>
+                <button @click="view = 'groups'" :class="view === 'groups' ? 'bg-slate-100 dark:bg-slate-800 text-blue-600' : ''" class="w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 transition"><i class="fa-solid fa-layer-group"></i> Group Logic</button>
+                <button @click="view = 'policies'" :class="view === 'policies' ? 'bg-slate-100 dark:bg-slate-800 text-blue-600' : ''" class="w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 transition"><i class="fa-solid fa-shield-halved"></i> Quota Policies</button>
+                <button @click="view = 'logs'" :class="view === 'logs' ? 'bg-slate-100 dark:bg-slate-800 text-blue-600' : ''" class="w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 transition"><i class="fa-solid fa-list-ul"></i> Logs</button>
             </nav>
-            <div class="p-6 text-center">
-                <button @click="logout" class="flex items-center justify-center w-full px-4 py-2 text-sm text-slate-400 hover:text-red-500 transition-colors"><i class="fa-solid fa-power-off mr-3"></i> Terminate</button>
+            <div class="p-4 border-t dark:border-slate-800">
+                <button @click="toggleTheme" class="w-full p-2 rounded-lg bg-slate-100 dark:bg-slate-800 mb-2"><i class="fa-solid" :class="darkMode ? 'fa-sun text-yellow-400' : 'fa-moon'"></i></button>
+                <button @click="logout" class="w-full text-red-500 text-sm font-bold">Logout</button>
             </div>
         </aside>
 
-        <main class="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-            <header class="h-20 flex items-center justify-between px-8 border-b border-slate-200 dark:border-slate-800/40 z-10 bg-white/50 dark:bg-transparent backdrop-blur-md">
-                <div class="flex items-center gap-4"><div class="h-10 w-1 bg-luxury-500 rounded-full"></div><h1 class="text-xl font-bold text-slate-900 dark:text-white" x-text="menuItems.find(i => i.id === view).label"></h1></div>
-                <div class="flex items-center gap-4">
-                    <button @click="toggleTheme" class="glass p-2.5 rounded-xl text-slate-500 dark:text-yellow-400 hover:scale-110 transition-all"><i class="fa-solid" :class="darkMode ? 'fa-sun' : 'fa-moon'"></i></button>
-                    <button @click="refreshAll" class="luxury-gradient px-4 py-2 rounded-xl text-xs font-black uppercase text-white shadow-lg hover:brightness-110 transition-all flex items-center gap-2 group"><i class="fa-solid fa-arrows-rotate group-hover:rotate-180 transition-transform duration-500"></i><span>Sync</span></button>
-                </div>
+        <!-- Content -->
+        <main class="flex-1 overflow-y-auto p-8">
+            <header class="flex justify-between items-center mb-8">
+                <h1 class="text-3xl font-bold capitalize" x-text="view"></h1>
+                <button @click="refreshAll" class="px-4 py-2 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-xl shadow-sm hover:shadow-md transition">Sync Data</button>
             </header>
 
-            <div class="flex-1 overflow-y-auto p-8 z-10">
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-                    <template x-for="stat in statsCards" :key="stat.label">
-                        <div class="glass p-6 rounded-2xl group hover:border-luxury-500/50 transition-all duration-300 relative shadow-sm">
-                            <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3" x-text="stat.label"></h3>
-                            <p class="text-3xl font-black text-slate-900 dark:text-white tracking-tighter" x-text="stat.value"></p>
-                        </div>
-                    </template>
+            <!-- USERS VIEW -->
+            <div x-show="view === 'users'">
+                <div class="glass rounded-2xl overflow-hidden shadow-lg">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-slate-50 dark:bg-slate-800/50 text-xs font-bold uppercase text-slate-500">
+                            <tr><th class="p-4">User</th><th class="p-4">Status</th><th class="p-4">Policy</th><th class="p-4 text-right">Actions</th></tr>
+                        </thead>
+                        <tbody class="divide-y dark:divide-slate-800">
+                            <template x-for="user in users" :key="user.id">
+                                <tr class="text-sm">
+                                    <td class="p-4 font-semibold" x-text="user.id"></td>
+                                    <td class="p-4">
+                                        <button @click="toggleUserStatus(user)" :class="user.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'" class="px-2 py-1 rounded-md text-[10px] font-bold uppercase" x-text="user.is_active ? 'Active' : 'Banned'"></button>
+                                    </td>
+                                    <td class="p-4">
+                                        <select x-model="user.policy_id" @change="updateUserPolicy(user)" class="bg-transparent border-b border-slate-200 dark:border-slate-700 font-bold outline-none">
+                                            <template x-for="p in policies" :key="p.id"><option :value="p.id" x-text="p.name"></option></template>
+                                        </select>
+                                    </td>
+                                    <td class="p-4 text-right"><button @click="toggleUserStatus(user)" class="text-slate-400 hover:text-red-500"><i class="fa-solid fa-ban"></i></button></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
                 </div>
+            </div>
 
-                <div class="space-y-10">
-                    <!-- USERS -->
-                    <section x-show="view === 'overview' || view === 'users'" x-transition>
-                        <div class="glass rounded-2xl overflow-hidden shadow-xl">
-                            <div class="px-8 py-6 border-b border-slate-200 dark:border-slate-800/60 bg-white/50 dark:bg-slate-900/40 flex items-center justify-between"><h2 class="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">User Directory</h2></div>
-                            <div class="overflow-x-auto">
-                                <table class="w-full text-left">
-                                    <thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] font-black text-slate-400 uppercase tracking-widest"><tr><th class="px-8 py-4">Identity</th><th class="px-8 py-4 text-center">Status</th><th class="px-8 py-4 text-center">Policy</th><th class="px-8 py-4 text-right">Actions</th></tr></thead>
-                                    <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40">
-                                        <template x-for="user in users" :key="user.id">
-                                            <tr class="hover:bg-white dark:hover:bg-slate-800/20 transition-colors text-sm">
-                                                <td class="px-8 py-5 font-bold text-slate-700 dark:text-slate-200" x-text="user.id"></td>
-                                                <td class="px-8 py-5 text-center">
-                                                    <button @click="toggleUserStatus(user)" :class="user.is_active ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'" class="px-3 py-1 rounded-lg text-[10px] font-black uppercase" x-text="user.is_active ? 'Active' : 'Banned'"></button>
-                                                </td>
-                                                <td class="px-8 py-5 text-center">
-                                                    <select x-model="user.policy_id" @change="updateUserPolicy(user)" class="bg-transparent text-luxury-600 dark:text-luxury-300 font-bold outline-none cursor-pointer">
-                                                        <template x-for="p in policies" :key="p.id"><option :value="p.id" x-text="p.name"></option></template>
-                                                    </select>
-                                                </td>
-                                                <td class="px-8 py-5 text-right"><button @click="toggleUserStatus(user)" class="text-slate-300 hover:text-rose-500"><i class="fa-solid fa-shield-slash"></i></button></td>
-                                            </tr>
-                                        </template>
-                                    </tbody>
-                                </table>
+            <!-- GROUPS VIEW -->
+            <div x-show="view === 'groups'">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="glass p-6 rounded-2xl shadow-lg border-blue-500/20">
+                        <h3 class="font-bold mb-4">Link Group to Policy</h3>
+                        <form @submit.prevent="saveGroupPolicy" class="space-y-4">
+                            <label class="block text-xs font-bold text-slate-500 uppercase">OpenWebUI Group</label>
+                            <select x-model="newGroupPolicy.group_name" class="w-full p-2 rounded-lg border dark:bg-slate-800 dark:border-slate-700">
+                                <option value="">-- Select --</option>
+                                <template x-for="g in webuiGroups" :key="g.name"><option :value="g.name" x-text="g.name"></option></template>
+                            </select>
+                            <label class="block text-xs font-bold text-slate-500 uppercase">Middleware Policy</label>
+                            <select x-model="newGroupPolicy.policy_id" class="w-full p-2 rounded-lg border dark:bg-slate-800 dark:border-slate-700">
+                                <option value="">-- Select --</option>
+                                <template x-for="p in policies" :key="p.id"><option :value="p.id" x-text="p.name"></option></template>
+                            </select>
+                            <label class="block text-xs font-bold text-slate-500 uppercase">Priority</label>
+                            <input type="number" x-model.number="newGroupPolicy.priority" class="w-full p-2 rounded-lg border dark:bg-slate-800 dark:border-slate-700">
+                            <button type="submit" class="w-full luxury-gradient text-white py-2 rounded-lg font-bold">Save Mapping</button>
+                        </form>
+                    </div>
+                    <div class="lg:col-span-2 glass rounded-2xl overflow-hidden shadow-lg">
+                        <table class="w-full text-left">
+                            <thead class="bg-slate-50 dark:bg-slate-800/50 text-xs font-bold uppercase text-slate-500">
+                                <tr><th class="p-4">Group</th><th class="p-4">Policy</th><th class="p-4">Priority</th><th class="p-4 text-right">Action</th></tr>
+                            </thead>
+                            <tbody class="divide-y dark:divide-slate-800">
+                                <template x-for="gp in groupPolicies" :key="gp.group_name">
+                                    <tr class="text-sm">
+                                        <td class="p-4 font-bold" x-text="gp.group_name"></td>
+                                        <td class="p-4 text-blue-500 font-bold" x-text="gp.policy_id"></td>
+                                        <td class="p-4" x-text="gp.priority"></td>
+                                        <td class="p-4 text-right"><button @click="deleteGroupMapping(gp.group_name)" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-trash"></i></button></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- POLICIES VIEW -->
+            <div x-show="view === 'policies'">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="glass p-6 rounded-2xl shadow-lg border-purple-500/20">
+                        <h3 class="font-bold mb-4">Upsert Quota Policy</h3>
+                        <form @submit.prevent="createPolicy" class="space-y-4 text-slate-900 dark:text-white">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Policy ID</label>
+                                <input type="text" x-model="newPolicy.id" placeholder="e.g. vip-class" class="w-full p-2 rounded-lg border dark:bg-slate-800 dark:border-slate-700 text-slate-900 dark:text-white">
                             </div>
-                        </div>
-                    </section>
-
-                    <!-- GROUPS -->
-                    <section x-show="view === 'groups'" x-transition>
-                        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                            <div class="lg:col-span-4">
-                                <div class="glass p-8 rounded-2xl shadow-lg border-luxury-500/10">
-                                    <h3 class="text-sm font-black text-slate-900 dark:text-white mb-6 uppercase tracking-widest">Map Groups</h3>
-                                    <form @submit.prevent="saveGroupPolicy" class="space-y-6">
-                                        <div class="space-y-2">
-                                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Group</label>
-                                            <select x-model="newGroupPolicy.group_name" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none">
-                                                <option value="">-- Select --</option>
-                                                <template x-for="g in webuiGroups" :key="g.name"><option :value="g.name" x-text="g.name"></option></template>
-                                            </select>
-                                        </div>
-                                        <div class="space-y-2">
-                                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Policy</label>
-                                            <select x-model="newGroupPolicy.policy_id" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none">
-                                                <option value="">-- Select --</option>
-                                                <template x-for="p in policies" :key="p.id"><option :value="p.id" x-text="p.name"></option></template>
-                                            </select>
-                                        </div>
-                                        <div class="space-y-2">
-                                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Priority</label>
-                                            <input type="number" x-model.number="newGroupPolicy.priority" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-white">
-                                        </div>
-                                        <button type="submit" class="luxury-gradient w-full py-4 rounded-xl font-black text-xs uppercase text-white shadow-xl hover:brightness-110 transition-all">Link logic</button>
-                                    </form>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Display Name</label>
+                                <input type="text" x-model="newPolicy.name" placeholder="e.g. High Performance Tier" class="w-full p-2 rounded-lg border dark:bg-slate-800 dark:border-slate-700 text-slate-900 dark:text-white">
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Daily Token</label>
+                                    <input type="number" x-model.number="newPolicy.daily_token_limit" class="w-full p-2 rounded-lg border dark:bg-slate-800 dark:border-slate-700 text-slate-900 dark:text-white">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Monthly Token</label>
+                                    <input type="number" x-model.number="newPolicy.monthly_token_limit" class="w-full p-2 rounded-lg border dark:bg-slate-800 dark:border-slate-700 text-slate-900 dark:text-white">
                                 </div>
                             </div>
-                            <div class="lg:col-span-8">
-                                <div class="glass rounded-2xl overflow-hidden shadow-lg">
-                                    <table class="w-full text-left">
-                                        <thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] text-slate-400 font-black uppercase tracking-widest"><tr><th class="px-8 py-4">Group</th><th class="px-8 py-4">Enforcement</th><th class="px-8 py-4 text-center">Rank</th><th class="px-8 py-4 text-right">Delete</th></tr></thead>
-                                        <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40">
-                                            <template x-for="gp in groupPolicies" :key="gp.group_name">
-                                                <tr class="hover:bg-white dark:hover:bg-slate-800/20 transition-colors">
-                                                    <td class="px-8 py-5 font-bold text-slate-700 dark:text-white" x-text="gp.group_name"></td>
-                                                    <td class="px-8 py-5"><span class="bg-luxury-500/10 text-luxury-600 dark:text-luxury-400 px-3 py-1 rounded-lg text-[10px] font-black uppercase" x-text="gp.policy_id"></span></td>
-                                                    <td class="px-8 py-5 text-center font-mono text-slate-600 dark:text-slate-200" x-text="gp.priority"></td>
-                                                    <td class="px-8 py-5 text-right"><button @click="deleteGroupMapping(gp.group_name)" class="text-rose-400/50 hover:text-rose-500"><i class="fa-solid fa-trash-can"></i></button></td>
-                                                </tr>
-                                            </template>
-                                        </tbody>
-                                    </table>
-                                </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Allowed Models (CSV or *)</label>
+                                <input type="text" x-model="newPolicy.allowed_models" class="w-full p-2 rounded-lg border dark:bg-slate-800 dark:border-slate-700 text-slate-900 dark:text-white">
                             </div>
-                        </div>
-                    </section>
+                            <button type="submit" class="w-full luxury-gradient text-white py-2 rounded-lg font-bold shadow-md">Execute Upsert</button>
+                        </form>
+                    </div>
+                    <div class="lg:col-span-2 glass rounded-2xl overflow-hidden shadow-lg">
+                        <table class="w-full text-left">
+                            <thead class="bg-slate-50 dark:bg-slate-800/50 text-xs font-bold uppercase text-slate-500">
+                                <tr><th class="p-4">Policy Name</th><th class="p-4">Limits (D/M)</th><th class="p-4">Models</th><th class="p-4 text-right">Delete</th></tr>
+                            </thead>
+                            <tbody class="divide-y dark:divide-slate-800">
+                                <template x-for="p in policies" :key="p.id">
+                                    <tr class="text-sm">
+                                        <td class="p-4"><div class="font-bold" x-text="p.name"></div><div class="text-[10px] text-slate-400 font-mono" x-text="p.id"></div></td>
+                                        <td class="p-4 font-mono" x-text="(p.daily_token_limit == -1 ? '∞' : formatNumber(p.daily_token_limit)) + ' / ' + (p.monthly_token_limit == -1 ? '∞' : formatNumber(p.monthly_token_limit))"></td>
+                                        <td class="p-4 text-xs text-slate-400 max-w-[150px] truncate" x-text="p.allowed_models"></td>
+                                        <td class="p-4 text-right"><button @click="deletePolicy(p.id)" class="text-slate-300 hover:text-red-500" x-show="p.id !== 'default'"><i class="fa-solid fa-trash-can"></i></button></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
 
-                    <!-- POLICIES -->
-                    <section x-show="view === 'policies'" x-transition>
-                        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                            <div class="lg:col-span-4">
-                                <div class="glass p-8 rounded-2xl shadow-lg border-luxury-500/10">
-                                    <h3 class="text-sm font-black text-slate-900 dark:text-white mb-6 uppercase tracking-widest">Upsert Policy</h3>
-                                    <form @submit.prevent="createPolicy" class="space-y-6">
-                                        <input type="text" x-model="newPolicy.id" placeholder="Policy ID" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-white outline-none">
-                                        <input type="text" x-model="newPolicy.name" placeholder="Name" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-white outline-none">
-                                        <div class="grid grid-cols-2 gap-4">
-                                            <input type="number" x-model.number="newPolicy.daily_token_limit" placeholder="Daily Limit" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-white text-xs">
-                                            <input type="number" x-model.number="newPolicy.monthly_token_limit" placeholder="Monthly Limit" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-white text-xs">
-                                        </div>
-                                        <input type="text" x-model="newPolicy.allowed_models" placeholder="Allowed Models (*)" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-white outline-none">
-                                        <button type="submit" class="luxury-gradient w-full py-4 rounded-xl font-black text-xs uppercase text-white shadow-xl hover:brightness-110 transition-all">Save Architecture</button>
-                                    </form>
-                                </div>
-                            </div>
-                            <div class="lg:col-span-8">
-                                <div class="glass rounded-2xl overflow-hidden shadow-lg">
-                                    <table class="w-full text-left">
-                                        <thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] text-slate-400 font-black uppercase tracking-widest"><tr><th class="px-8 py-4">Name/ID</th><th class="px-8 py-4">Limits (D/M)</th><th class="px-8 py-4">Models</th><th class="px-8 py-4 text-right">Action</th></tr></thead>
-                                        <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40">
-                                            <template x-for="p in policies" :key="p.id">
-                                                <tr class="hover:bg-white dark:hover:bg-slate-800/20 transition-colors">
-                                                    <td class="px-8 py-5 text-sm"><div class="font-bold text-slate-700 dark:text-white" x-text="p.name"></div><div class="text-[10px] text-slate-400" x-text="p.id"></div></td>
-                                                    <td class="px-8 py-5 text-xs text-slate-500 font-mono"><span x-text="p.daily_token_limit == -1 ? '∞' : formatNumber(p.daily_token_limit)"></span> / <span x-text="p.monthly_token_limit == -1 ? '∞' : formatNumber(p.monthly_token_limit)"></span></td>
-                                                    <td class="px-8 py-5 text-[10px] text-slate-400 italic max-w-xs truncate" x-text="p.allowed_models"></td>
-                                                    <td class="px-8 py-5 text-right"><button @click="deletePolicy(p.id)" class="text-rose-400/50 hover:text-rose-500" x-show="p.id !== 'default'"><i class="fa-solid fa-trash-can"></i></button></td>
-                                                </tr>
-                                            </template>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <!-- LOGS -->
-                    <section x-show="view === 'logs' || view === 'overview'" x-transition>
-                        <div class="glass rounded-2xl overflow-hidden shadow-xl">
-                            <div class="px-8 py-6 border-b border-slate-200 dark:border-slate-800/60 bg-white/50 dark:bg-slate-900/40 flex items-center justify-between"><h2 class="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">Network Analytics</h2></div>
-                            <div class="overflow-x-auto">
-                                <table class="w-full text-left">
-                                    <thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] font-black text-slate-400 uppercase tracking-widest"><tr><th class="px-8 py-4">Time</th><th class="px-8 py-4">Identity</th><th class="px-8 py-4">Engine</th><th class="px-8 py-4 text-center">Tokens</th><th class="px-8 py-4 text-right">Cost</th></tr></thead>
-                                    <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40 font-mono text-[11px]">
-                                        <template x-for="log in usage" :key="log.id">
-                                            <tr class="hover:bg-white dark:hover:bg-slate-800/20 transition-colors"><td class="px-8 py-4 text-slate-400" x-text="formatDateTimeShort(log.ts)"></td><td class="px-8 py-4 font-bold text-slate-600 dark:text-slate-300" x-text="log.user_id"></td><td class="px-8 py-4 text-blue-500 dark:text-blue-400" x-text="log.model.split('/')[1] || log.model"></td><td class="px-8 py-4 text-center font-bold text-slate-700 dark:text-white" x-text="formatNumber(log.total_tokens)"></td><td class="px-8 py-4 text-right"><span class="text-emerald-600 dark:text-emerald-400 font-bold" x-text="'$' + parseFloat(log.total_cost || 0).toFixed(6)"></span></td></tr>
-                                        </template>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </section>
+            <!-- LOGS VIEW -->
+            <div x-show="view === 'logs'">
+                <div class="glass rounded-2xl overflow-hidden shadow-lg">
+                    <table class="w-full text-left">
+                        <thead class="bg-slate-50 dark:bg-slate-800/50 text-xs font-bold uppercase text-slate-500">
+                            <tr><th class="p-4">Time</th><th class="p-4">User</th><th class="p-4">Model</th><th class="p-4 text-center">Tokens</th><th class="p-4 text-right">Cost</th></tr>
+                        </thead>
+                        <tbody class="divide-y dark:divide-slate-800 font-mono text-[11px]">
+                            <template x-for="log in usage" :key="log.id">
+                                <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/20">
+                                    <td class="p-4 text-slate-400" x-text="formatDateTimeShort(log.ts)"></td>
+                                    <td class="p-4 font-bold" x-text="log.user_id"></td>
+                                    <td class="p-4 text-blue-400" x-text="log.model.split('/')[1] || log.model"></td>
+                                    <td class="p-4 text-center" x-text="formatNumber(log.total_tokens)"></td>
+                                    <td class="p-4 text-right font-bold text-emerald-500" x-text="'$' + parseFloat(log.total_cost || 0).toFixed(6)"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </main>
@@ -228,31 +210,15 @@
     <script>
         function dashboard() {
             return {
-                view: 'overview',
+                view: 'users',
                 darkMode: localStorage.getItem('theme') === 'dark',
                 adminKey: localStorage.getItem('adminKey') || '',
                 keyInput: '',
                 loading: false,
                 users: [], policies: [], groupPolicies: [], webuiGroups: [], usage: [],
-                menuItems: [
-                    { id: 'overview', label: 'Command Center', icon: 'fa-solid fa-gauge-high' },
-                    { id: 'users', label: 'User Hub', icon: 'fa-solid fa-user-gear' },
-                    { id: 'groups', label: 'Group Logic', icon: 'fa-solid fa-sitemap' },
-                    { id: 'policies', label: 'Quota Policies', icon: 'fa-solid fa-shield-halved' },
-                    { id: 'logs', label: 'System Logs', icon: 'fa-solid fa-receipt' },
-                ],
-                stats: { totalUsers: 0, totalPolicies: 0, totalCost: 0, totalTokens: 0 },
                 newPolicy: { id: '', name: '', daily_token_limit: 50000, monthly_token_limit: 1000000, allowed_models: '*' },
                 newGroupPolicy: { group_name: '', policy_id: '', priority: 0 },
-
-                get statsCards() {
-                    return [
-                        { label: 'Total Fleet', value: this.stats.totalUsers, icon: 'fa-solid fa-users' },
-                        { label: 'Guardrails', value: this.stats.totalPolicies, icon: 'fa-solid fa-vault' },
-                        { label: 'Data Burn', value: this.formatNumber(this.stats.totalTokens), icon: 'fa-solid fa-fire' },
-                        { label: 'Net Exposure', value: '$' + this.stats.totalCost.toFixed(3), icon: 'fa-solid fa-dollar-sign' }
-                    ];
-                },
+                stats: { totalUsers: 0, totalPolicies: 0, totalCost: 0, totalTokens: 0 },
 
                 async init() {
                     if (this.adminKey) {
@@ -273,19 +239,15 @@
                     this.loading = true;
                     try {
                         const headers = { 'x-admin-key': this.adminKey };
-                        const [users, policies, usage, gps, wgs] = await Promise.all([
+                        const [u, p, log, gps, wgs] = await Promise.all([
                             fetch('/admin/users', { headers }).then(r => r.json()),
                             fetch('/admin/policies', { headers }).then(r => r.json()),
                             fetch('/admin/usage', { headers }).then(r => r.json()),
                             fetch('/admin/group-policies', { headers }).then(r => r.json()),
                             fetch('/admin/openwebui-groups', { headers }).then(r => r.json())
                         ]);
-                        this.users = users; this.policies = policies; this.usage = usage;
+                        this.users = u; this.policies = p; this.usage = log;
                         this.groupPolicies = gps; this.webuiGroups = wgs;
-                        this.stats.totalUsers = users.length;
-                        this.stats.totalPolicies = policies.length;
-                        this.stats.totalTokens = usage.reduce((sum, log) => sum + (parseInt(log.total_tokens) || 0), 0);
-                        this.stats.totalCost = usage.reduce((sum, log) => sum + (parseFloat(log.total_cost) || 0), 0);
                     } catch (e) { console.error(e); } finally { this.loading = false; }
                 },
 
@@ -305,7 +267,7 @@
                 },
 
                 async deletePolicy(id) {
-                    if (!confirm('Delete this policy?')) return;
+                    if (!confirm('Delete?')) return;
                     await fetch(`/admin/policies/${id}`, { method: 'DELETE', headers: { 'x-admin-key': this.adminKey } });
                     await this.refreshAll();
                 },
@@ -316,17 +278,13 @@
                 },
 
                 async deleteGroupMapping(name) {
-                    if (!confirm('Remove group mapping?')) return;
                     await fetch(`/admin/group-policies/${name}`, { method: 'DELETE', headers: { 'x-admin-key': this.adminKey } });
                     await this.refreshAll();
                 },
 
                 formatNumber(n) { return new Intl.NumberFormat().format(n); },
                 formatDate(d) { return new Date(d).toLocaleDateString(); },
-                formatDateTimeShort(d) { 
-                    const dt = new Date(d);
-                    return dt.getHours().toString().padStart(2,'0') + ':' + dt.getMinutes().toString().padStart(2,'0') + ':' + dt.getSeconds().toString().padStart(2,'0');
-                }
+                formatDateTimeShort(d) { return new Date(d).toLocaleTimeString(); }
             }
         }
     </script>

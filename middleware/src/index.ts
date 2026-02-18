@@ -75,20 +75,23 @@ async function checkAccess(userId: string): Promise<{ allowed: boolean; reason?:
 
   if (!user || !user.is_active) return { allowed: false, reason: "User inactive or not found", groups };
 
-  // Logic: Resolve Active Policy
+  // PRECEDENCE LOGIC:
+  // 1. Individual Override (If policy_id is NOT 'default')
+  // 2. Group Policy (If user has groups and a mapping exists, pick highest priority)
+  // 3. System Default ('default')
+  
   let activePolicyId = user.policy_id;
 
-  // If user is set to 'default', try to upgrade to a group-based policy
-  if (activePolicyId === 'default') {
-      if (groups.length > 0) {
-          const groupPolicy: any = await db.get(`
-              SELECT policy_id FROM group_policies 
-              WHERE group_name = ANY($1) 
-              ORDER BY priority DESC LIMIT 1
-          `, [groups]);
-          if (groupPolicy) {
-              activePolicyId = groupPolicy.policy_id;
-          }
+  // If the user's assigned policy is 'default', check if their groups have a better one.
+  if (activePolicyId === 'default' && groups.length > 0) {
+      const groupPolicy: any = await db.get(`
+          SELECT policy_id FROM group_policies 
+          WHERE group_name = ANY($1) 
+          ORDER BY priority DESC LIMIT 1
+      `, [groups]);
+      if (groupPolicy) {
+          activePolicyId = groupPolicy.policy_id;
+          console.log(`🏷️ Group policy applied for ${userId}: ${activePolicyId}`);
       }
   }
 
@@ -114,11 +117,6 @@ async function checkAccess(userId: string): Promise<{ allowed: boolean; reason?:
   return { allowed: true, groups };
 }
 
-function logEvent(event: Record<string, unknown>) {
-  if (LOG_MODE === "off") return;
-  console.log(JSON.stringify(event));
-}
-
 async function processUsage(userId: string | null, model: string, usage: any) {
   if (!userId) return;
   const dailyKey = `usage:user:${userId}:daily:${new Date().toISOString().split('T')[0]}`;
@@ -137,7 +135,6 @@ async function processUsage(userId: string | null, model: string, usage: any) {
       total_cost: cost, ts: new Date().toISOString()
     }))
   ]);
-  console.log(`💰 Usage Tracked: User=${userId}, Model=${model}, Tokens=${total}, Cost=${cost}`);
 }
 
 async function startBackgroundWorker() {
