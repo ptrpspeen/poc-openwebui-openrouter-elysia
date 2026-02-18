@@ -326,6 +326,30 @@ const app = new Elysia()
         await db.run("DELETE FROM policies WHERE id = $1", [params.id]);
         return { success: true };
       })
+      .get("/stats", async () => {
+          const totalUsers = await db.get("SELECT COUNT(*) as count FROM users");
+          const totalPolicies = await db.get("SELECT COUNT(*) as count FROM policies");
+          const overallUsage = await db.get("SELECT SUM(total_tokens) as tokens, SUM(total_cost) as cost, COUNT(*) as reqs FROM usage_logs");
+          const topModels = await db.all("SELECT model, COUNT(*) as count, SUM(total_tokens) as tokens FROM usage_logs GROUP BY model ORDER BY count DESC LIMIT 5");
+          const topUsers = await db.all("SELECT user_id, SUM(total_tokens) as tokens, SUM(total_cost) as cost FROM usage_logs GROUP BY user_id ORDER BY tokens DESC LIMIT 5");
+          
+          const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+          const last24h = await db.get("SELECT SUM(total_tokens) as tokens, SUM(total_cost) as cost FROM usage_logs WHERE ts >= $1", [yesterday]);
+
+          return {
+              total_users: parseInt(totalUsers.count),
+              total_policies: parseInt(totalPolicies.count),
+              total_tokens: parseInt(overallUsage.tokens || "0"),
+              total_cost: parseFloat(overallUsage.cost || "0"),
+              total_requests: parseInt(overallUsage.reqs || "0"),
+              last_24h: {
+                  tokens: parseInt(last24h.tokens || "0"),
+                  cost: parseFloat(last24h.cost || "0")
+              },
+              top_models: topModels,
+              top_users: topUsers
+          };
+      })
   )
   .get("/", () => Bun.file("public/index.html"))
   .listen(8080);

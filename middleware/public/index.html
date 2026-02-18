@@ -51,6 +51,7 @@
     </div>
 
     <div x-show="adminKey" class="flex h-full" x-cloak>
+        <!-- Sidebar -->
         <aside class="hidden md:flex w-72 flex-col bg-white dark:bg-slate-900/40 border-r border-slate-200 dark:border-slate-800/60 backdrop-blur-md">
             <div class="p-8 flex items-center gap-3">
                 <div class="luxury-gradient h-10 w-10 rounded-xl flex items-center justify-center shadow-lg text-white"><i class="fa-solid fa-bolt"></i></div>
@@ -63,7 +64,9 @@
                     </button>
                 </template>
             </nav>
-            <div class="p-6"><button @click="logout" class="flex w-full items-center px-4 py-2 text-sm text-slate-400 hover:text-red-500 transition-colors"><i class="fa-solid fa-power-off mr-3"></i> Terminate</button></div>
+            <div class="p-6 text-center">
+                <button @click="logout" class="flex items-center justify-center w-full px-4 py-2 text-sm text-slate-400 hover:text-red-500 transition-colors"><i class="fa-solid fa-power-off mr-3"></i> Terminate</button>
+            </div>
         </aside>
 
         <main class="flex-1 flex flex-col min-w-0 overflow-hidden relative">
@@ -76,89 +79,136 @@
             </header>
 
             <div class="flex-1 overflow-y-auto p-8 z-10">
-                <div x-show="view === 'users' || view === 'overview'" class="mb-10">
-                    <div class="glass rounded-2xl overflow-hidden shadow-xl">
-                        <div class="px-8 py-6 border-b border-slate-200 dark:border-slate-800/60 bg-white/50 dark:bg-slate-900/40"><h2 class="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">User Directory</h2></div>
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-left">
-                                <thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] font-black text-slate-400 uppercase tracking-widest"><tr><th class="px-8 py-4">Identity</th><th class="px-8 py-4">Groups</th><th class="px-8 py-4">Assigned</th><th class="px-8 py-4">Effective Policy</th><th class="px-8 py-4 text-right">Control</th></tr></thead>
-                                <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40">
-                                    <template x-for="user in users" :key="user.id">
-                                        <tr class="hover:bg-white dark:hover:bg-slate-800/20 text-sm transition-colors">
-                                            <td class="px-8 py-5"><div class="font-bold text-slate-700 dark:text-slate-200" x-text="user.id"></div></td>
-                                            <td class="px-8 py-5"><template x-for="g in user.groups"><span class="bg-slate-200 dark:bg-slate-800 text-[10px] px-1.5 py-0.5 rounded mr-1" x-text="g"></span></template></td>
-                                            <td class="px-8 py-5">
-                                                <select x-model="user.policy_id" @change="updateUserPolicy(user)" class="bg-transparent border-b border-slate-200 dark:border-slate-700 font-bold outline-none cursor-pointer">
-                                                    <template x-for="p in policies" :key="p.id"><option :value="p.id" x-text="p.name"></option></template>
-                                                </select>
-                                            </td>
-                                            <td class="px-8 py-5"><span class="bg-luxury-500/10 text-luxury-600 dark:text-luxury-400 px-2 py-0.5 rounded-lg font-black text-[10px] uppercase" x-text="user.effective_policy_id"></span></td>
-                                            <td class="px-8 py-5 text-right"><button @click="toggleUserStatus(user)" :class="user.is_active ? 'text-rose-500' : 'text-emerald-500'"><i class="fa-solid" :class="user.is_active ? 'fa-user-slash' : 'fa-user-check'"></i></button></td>
-                                        </tr>
-                                    </template>
-                                </tbody>
-                            </table>
+                <!-- Stats Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+                    <template x-for="stat in statsCards" :key="stat.label">
+                        <div class="glass p-6 rounded-2xl group hover:border-luxury-500/50 transition-all duration-300 relative shadow-sm">
+                            <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3" x-text="stat.label"></h3>
+                            <p class="text-3xl font-black text-slate-900 dark:text-white tracking-tighter" x-text="stat.value"></p>
+                            <div class="mt-2 text-[10px] text-slate-400" x-text="stat.context"></div>
                         </div>
-                    </div>
+                    </template>
                 </div>
 
-                <div x-show="view === 'groups'" class="space-y-10">
-                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                        <div class="lg:col-span-4">
-                            <div class="glass p-8 rounded-2xl shadow-lg border-luxury-500/10">
-                                <h3 class="text-sm font-black text-slate-900 dark:text-white mb-6 uppercase tracking-widest">Link Groups</h3>
-                                <form @submit.prevent="saveGroupPolicy" class="space-y-4">
-                                    <select x-model="newGroupPolicy.group_name" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none"><option value="">-- Choose Group --</option><template x-for="g in webuiGroups" :key="g.name"><option :value="g.name" x-text="g.name"></option></template></select>
-                                    <select x-model="newGroupPolicy.policy_id" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none"><option value="">-- Choose Policy --</option><template x-for="p in policies" :key="p.id"><option :value="p.id" x-text="p.name"></option></template></select>
-                                    <input type="number" x-model.number="newGroupPolicy.priority" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-white" placeholder="Priority (Higher = Priority)">
-                                    <button type="submit" class="luxury-gradient w-full py-4 rounded-xl font-black text-xs uppercase text-white shadow-xl">Execute Link</button>
-                                </form>
-                            </div>
-                        </div>
-                        <div class="lg:col-span-8">
-                            <div class="glass rounded-2xl overflow-hidden shadow-lg">
-                                <table class="w-full text-left"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] text-slate-400 font-black uppercase tracking-widest"><tr><th class="px-8 py-4">OpenWebUI Group</th><th class="px-8 py-4">Middleware Policy</th><th class="px-8 py-4 text-center">Rank</th><th class="px-8 py-4 text-right">Action</th></tr></thead>
-                                    <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40"><template x-for="gp in groupPolicies" :key="gp.group_name"><tr><td class="px-8 py-5 font-bold text-slate-700 dark:text-white" x-text="gp.group_name"></td><td class="px-8 py-5"><span class="bg-luxury-500/10 text-luxury-600 dark:text-luxury-400 px-3 py-1 rounded-lg text-[10px] font-black uppercase" x-text="gp.policy_id"></span></td><td class="px-8 py-5 text-center" x-text="gp.priority"></td><td class="px-8 py-5 text-right"><button @click="deleteGroupMapping(gp.group_name)" class="text-rose-500/50 hover:text-rose-500"><i class="fa-solid fa-trash-can"></i></button></td></tr></template></tbody>
+                <div class="space-y-10">
+                    <!-- OVERVIEW / DASHBOARD -->
+                    <section x-show="view === 'overview'" x-transition class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div class="glass rounded-2xl overflow-hidden shadow-xl">
+                            <div class="px-8 py-6 border-b border-slate-200 dark:border-slate-800/60 bg-white/50 dark:bg-slate-900/40"><h2 class="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">Top Users (by Tokens)</h2></div>
+                            <div class="p-4 overflow-x-auto">
+                                <table class="w-full text-left text-sm">
+                                    <thead><tr class="text-slate-400 text-xs uppercase font-black"><th class="p-2">User</th><th class="p-2 text-right">Tokens</th><th class="p-2 text-right">Cost</th></tr></thead>
+                                    <tbody class="divide-y dark:divide-slate-800">
+                                        <template x-for="tu in stats.top_users" :key="tu.user_id">
+                                            <tr><td class="p-2 py-3 font-bold truncate max-w-[200px]" x-text="tu.user_id"></td><td class="p-2 text-right font-mono" x-text="formatNumber(tu.tokens)"></td><td class="p-2 text-right text-emerald-500 font-bold" x-text="'$' + parseFloat(tu.cost).toFixed(4)"></td></tr>
+                                        </template>
+                                    </tbody>
                                 </table>
                             </div>
                         </div>
-                    </div>
-                </div>
-
-                <div x-show="view === 'policies'" class="space-y-10">
-                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                        <div class="lg:col-span-4">
-                            <div class="glass p-8 rounded-2xl shadow-lg border-luxury-500/10">
-                                <h3 class="text-sm font-black text-slate-900 dark:text-white mb-6 uppercase tracking-widest text-slate-900 dark:text-white">Upsert Policy</h3>
-                                <form @submit.prevent="createPolicy" class="space-y-4">
-                                    <div><label class="text-[10px] font-bold text-slate-400 uppercase">Policy ID</label><input type="text" x-model="newPolicy.id" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none"></div>
-                                    <div><label class="text-[10px] font-bold text-slate-400 uppercase">Display Name</label><input type="text" x-model="newPolicy.name" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none"></div>
-                                    <div class="grid grid-cols-2 gap-4">
-                                        <div><label class="text-[10px] font-bold text-slate-400 uppercase">Daily Limit</label><input type="number" x-model.number="newPolicy.daily_token_limit" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none"></div>
-                                        <div><label class="text-[10px] font-bold text-slate-400 uppercase">Monthly Limit</label><input type="number" x-model.number="newPolicy.monthly_token_limit" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none"></div>
-                                    </div>
-                                    <div><label class="text-[10px] font-bold text-slate-400 uppercase">Allowed Models</label><input type="text" x-model="newPolicy.allowed_models" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none" placeholder="*"></div>
-                                    <button type="submit" class="luxury-gradient w-full py-4 rounded-xl font-black text-xs uppercase text-white shadow-xl">Apply Policy</button>
-                                </form>
-                            </div>
-                        </div>
-                        <div class="lg:col-span-8">
-                            <div class="glass rounded-2xl overflow-hidden shadow-lg">
-                                <table class="w-full text-left"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] text-slate-400 font-black uppercase tracking-widest"><tr><th class="px-8 py-4">Policy Name</th><th class="px-8 py-4">Limits (D/M)</th><th class="px-8 py-4">Models</th><th class="px-8 py-4 text-right">Delete</th></tr></thead>
-                                    <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40 font-mono text-[11px]"><template x-for="p in policies" :key="p.id"><tr><td class="px-8 py-5 font-bold text-slate-700 dark:text-white" x-text="p.name"></td><td class="px-8 py-5" x-text="formatNumber(p.daily_token_limit) + ' / ' + formatNumber(p.monthly_token_limit)"></td><td class="px-8 py-5 italic text-slate-400" x-text="p.allowed_models"></td><td class="px-8 py-5 text-right"><button @click="deletePolicy(p.id)" class="text-rose-500/50 hover:text-rose-500" x-show="p.id !== 'default'"><i class="fa-solid fa-trash-can"></i></button></td></tr></template></tbody>
+                        <div class="glass rounded-2xl overflow-hidden shadow-xl">
+                            <div class="px-8 py-6 border-b border-slate-200 dark:border-slate-800/60 bg-white/50 dark:bg-slate-900/40"><h2 class="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">Top Models (by Volume)</h2></div>
+                            <div class="p-4 overflow-x-auto">
+                                <table class="w-full text-left text-sm">
+                                    <thead><tr class="text-slate-400 text-xs uppercase font-black"><th class="p-2">Model</th><th class="p-2 text-right">Requests</th><th class="p-2 text-right">Tokens</th></tr></thead>
+                                    <tbody class="divide-y dark:divide-slate-800">
+                                        <template x-for="tm in stats.top_models" :key="tm.model">
+                                            <tr><td class="p-2 py-3 font-bold" x-text="tm.model.split('/')[1] || tm.model"></td><td class="p-2 text-right" x-text="tm.count"></td><td class="p-2 text-right font-mono text-blue-400" x-text="formatNumber(tm.tokens)"></td></tr>
+                                        </template>
+                                    </tbody>
                                 </table>
                             </div>
                         </div>
-                    </div>
-                </div>
+                    </section>
 
-                <div x-show="view === 'logs'" class="mb-10">
-                    <div class="glass rounded-2xl overflow-hidden shadow-xl">
-                        <div class="px-8 py-6 border-b border-slate-200 dark:border-slate-800/60 bg-white/50 dark:bg-slate-900/40"><h2 class="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">Network Analytics</h2></div>
-                        <div class="overflow-x-auto"><table class="w-full text-left font-mono text-[11px]"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] text-slate-400 uppercase"><tr><th class="px-8 py-4">Time</th><th class="px-8 py-4">User</th><th class="px-8 py-4 text-right">Tokens</th><th class="px-8 py-4 text-right">Cost</th></tr></thead>
-                            <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40"><template x-for="log in usage" :key="log.id"><tr><td class="px-8 py-4" x-text="formatDateTimeShort(log.ts)"></td><td class="px-8 py-4 font-bold" x-text="log.user_id"></td><td class="px-8 py-4 text-right" x-text="formatNumber(log.total_tokens)"></td><td class="px-8 py-4 text-right text-emerald-500" x-text="'$' + parseFloat(log.total_cost || 0).toFixed(6)"></td></tr></template></tbody>
-                        </table></div>
-                    </div>
+                    <!-- USERS -->
+                    <section x-show="view === 'users'" x-transition>
+                        <div class="glass rounded-2xl overflow-hidden shadow-xl">
+                            <div class="px-8 py-6 border-b border-slate-200 dark:border-slate-800/60 bg-white/50 dark:bg-slate-900/40 flex items-center justify-between"><h2 class="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">User Directory</h2></div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left">
+                                    <thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] font-black text-slate-400 uppercase tracking-widest"><tr><th class="px-8 py-4">Identity</th><th class="px-8 py-4">Groups</th><th class="px-8 py-4">Assigned</th><th class="px-8 py-4">Effective Policy</th><th class="px-8 py-4 text-right">Control</th></tr></thead>
+                                    <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40">
+                                        <template x-for="user in users" :key="user.id">
+                                            <tr class="hover:bg-white dark:hover:bg-slate-800/20 text-sm transition-colors">
+                                                <td class="px-8 py-5 font-bold text-slate-700 dark:text-slate-200" x-text="user.id"></td>
+                                                <td class="px-8 py-5"><template x-for="g in user.groups"><span class="bg-slate-200 dark:bg-slate-800 text-[10px] px-1.5 py-0.5 rounded mr-1" x-text="g"></span></template></td>
+                                                <td class="px-8 py-5">
+                                                    <select x-model="user.policy_id" @change="updateUserPolicy(user)" class="bg-transparent border-b border-slate-200 dark:border-slate-700 font-bold outline-none cursor-pointer">
+                                                        <template x-for="p in policies" :key="p.id"><option :value="p.id" x-text="p.name"></option></template>
+                                                    </select>
+                                                </td>
+                                                <td class="px-8 py-5"><span class="bg-luxury-500/10 text-luxury-600 dark:text-luxury-400 px-2 py-0.5 rounded-lg font-black text-[10px] uppercase" x-text="user.effective_policy_id"></span></td>
+                                                <td class="px-8 py-5 text-right"><button @click="toggleUserStatus(user)" :class="user.is_active ? 'text-rose-500' : 'text-emerald-500'"><i class="fa-solid" :class="user.is_active ? 'fa-user-slash' : 'fa-user-check'"></i></button></td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- GROUPS -->
+                    <section x-show="view === 'groups'" x-transition>
+                        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                            <div class="lg:col-span-4">
+                                <div class="glass p-8 rounded-2xl shadow-lg border-luxury-500/10">
+                                    <h3 class="text-sm font-black text-slate-900 dark:text-white mb-6 uppercase tracking-widest">Link Groups</h3>
+                                    <form @submit.prevent="saveGroupPolicy" class="space-y-4">
+                                        <select x-model="newGroupPolicy.group_name" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none"><option value="">-- Choose Group --</option><template x-for="g in webuiGroups" :key="g.name"><option :value="g.name" x-text="g.name"></option></template></select>
+                                        <select x-model="newGroupPolicy.policy_id" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none"><option value="">-- Choose Policy --</option><template x-for="p in policies" :key="p.id"><option :value="p.id" x-text="p.name"></option></template></select>
+                                        <input type="number" x-model.number="newGroupPolicy.priority" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-white" placeholder="Priority (Higher = Priority)">
+                                        <button type="submit" class="luxury-gradient w-full py-4 rounded-xl font-black text-xs uppercase text-white shadow-xl">Execute Link</button>
+                                    </form>
+                                </div>
+                            </div>
+                            <div class="lg:col-span-8">
+                                <div class="glass rounded-2xl overflow-hidden shadow-lg">
+                                    <table class="w-full text-left"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] text-slate-400 font-black uppercase tracking-widest"><tr><th class="px-8 py-4">OpenWebUI Group</th><th class="px-8 py-4">Middleware Policy</th><th class="px-8 py-4 text-center">Rank</th><th class="px-8 py-4 text-right">Delete</th></tr></thead>
+                                        <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40"><template x-for="gp in groupPolicies" :key="gp.group_name"><tr><td class="px-8 py-5 font-bold text-slate-700 dark:text-white" x-text="gp.group_name"></td><td class="px-8 py-5"><span class="bg-luxury-500/10 text-luxury-600 dark:text-luxury-400 px-3 py-1 rounded-lg text-[10px] font-black uppercase" x-text="gp.policy_id"></span></td><td class="px-8 py-5 text-center" x-text="gp.priority"></td><td class="px-8 py-5 text-right"><button @click="deleteGroupMapping(gp.group_name)" class="text-rose-500/50 hover:text-rose-500"><i class="fa-solid fa-trash-can"></i></button></td></tr></template></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- POLICIES -->
+                    <section x-show="view === 'policies'" x-transition>
+                        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                            <div class="lg:col-span-4">
+                                <div class="glass p-8 rounded-2xl shadow-lg border-luxury-500/10">
+                                    <h3 class="text-sm font-black text-slate-900 dark:text-white mb-6 uppercase tracking-widest">Upsert Policy</h3>
+                                    <form @submit.prevent="createPolicy" class="space-y-4">
+                                        <div><label class="text-[10px] font-bold text-slate-400 uppercase">Policy ID</label><input type="text" x-model="newPolicy.id" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none"></div>
+                                        <div><label class="text-[10px] font-bold text-slate-400 uppercase">Display Name</label><input type="text" x-model="newPolicy.name" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none"></div>
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <div><label class="text-[10px] font-bold text-slate-400 uppercase">Daily Limit</label><input type="number" x-model.number="newPolicy.daily_token_limit" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none"></div>
+                                            <div><label class="text-[10px] font-bold text-slate-400 uppercase">Monthly Limit</label><input type="number" x-model.number="newPolicy.monthly_token_limit" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none"></div>
+                                        </div>
+                                        <div><label class="text-[10px] font-bold text-slate-400 uppercase">Allowed Models</label><input type="text" x-model="newPolicy.allowed_models" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none" placeholder="*"></div>
+                                        <button type="submit" class="luxury-gradient w-full py-4 rounded-xl font-black text-xs uppercase text-white shadow-xl">Apply Policy</button>
+                                    </form>
+                                </div>
+                            </div>
+                            <div class="lg:col-span-8">
+                                <div class="glass rounded-2xl overflow-hidden shadow-lg">
+                                    <table class="w-full text-left"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] text-slate-400 font-black uppercase tracking-widest"><tr><th class="px-8 py-4">Policy Name</th><th class="px-8 py-4">Limits (D/M)</th><th class="px-8 py-4 text-right">Action</th></tr></thead>
+                                        <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40 font-mono text-[11px]"><template x-for="p in policies" :key="p.id"><tr><td class="px-8 py-5 font-bold text-slate-700 dark:text-white" x-text="p.name"></td><td class="px-8 py-5" x-text="formatNumber(p.daily_token_limit) + ' / ' + formatNumber(p.monthly_token_limit)"></td><td class="px-8 py-5 text-right"><button @click="deletePolicy(p.id)" class="text-rose-500/50 hover:text-rose-500" x-show="p.id !== 'default'"><i class="fa-solid fa-trash-can"></i></button></td></tr></template></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- LOGS -->
+                    <section x-show="view === 'logs'" class="mb-10">
+                        <div class="glass rounded-2xl overflow-hidden shadow-xl">
+                            <div class="px-8 py-6 border-b border-slate-200 dark:border-slate-800/60 bg-white/50 dark:bg-slate-900/40"><h2 class="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">System Audit Log</h2></div>
+                            <div class="overflow-x-auto"><table class="w-full text-left font-mono text-[11px]"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] text-slate-400 uppercase"><tr><th class="px-8 py-4">Time</th><th class="px-8 py-4">Identity</th><th class="px-8 py-4 text-right">Tokens</th><th class="px-8 py-4 text-right">Cost</th></tr></thead>
+                                <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40"><template x-for="log in usage" :key="log.id"><tr><td class="px-8 py-4" x-text="formatDateTimeShort(log.ts)"></td><td class="px-8 py-4 font-bold" x-text="log.user_id"></td><td class="px-8 py-4 text-right" x-text="formatNumber(log.total_tokens)"></td><td class="px-8 py-4 text-right text-emerald-500" x-text="'$' + parseFloat(log.total_cost || 0).toFixed(6)"></td></tr></template></tbody>
+                            </table></div>
+                        </div>
+                    </section>
                 </div>
             </div>
         </main>
@@ -170,10 +220,17 @@
                 view: 'overview', darkMode: localStorage.getItem('theme') === 'dark', adminKey: localStorage.getItem('adminKey') || '', keyInput: '', loading: false,
                 users: [], policies: [], groupPolicies: [], webuiGroups: [], usage: [],
                 menuItems: [{ id: 'overview', label: 'Command Center', icon: 'fa-solid fa-gauge-high' }, { id: 'users', label: 'User Hub', icon: 'fa-solid fa-user-gear' }, { id: 'groups', label: 'Group Logic', icon: 'fa-solid fa-sitemap' }, { id: 'policies', label: 'Quota Policies', icon: 'fa-solid fa-shield-halved' }, { id: 'logs', label: 'System Logs', icon: 'fa-solid fa-receipt' }],
-                stats: { totalUsers: 0, totalPolicies: 0, totalCost: 0, totalTokens: 0 },
+                stats: { total_users: 0, total_policies: 0, total_tokens: 0, total_cost: 0, total_requests: 0, last_24h: { tokens: 0, cost: 0 }, top_models: [], top_users: [] },
                 newPolicy: { id: '', name: '', daily_token_limit: 50000, monthly_token_limit: 1000000, allowed_models: '*' },
                 newGroupPolicy: { group_name: '', policy_id: '', priority: 0 },
-                get statsCards() { return [{ label: 'Fleet', value: this.stats.totalUsers, icon: 'fa-solid fa-users' }, { label: 'Policies', value: this.stats.totalPolicies, icon: 'fa-solid fa-vault' }, { label: 'Burn', value: this.formatNumber(this.stats.totalTokens), icon: 'fa-solid fa-fire' }, { label: 'Exposure', value: '$' + this.stats.totalCost.toFixed(3), icon: 'fa-solid fa-dollar-sign' }]; },
+                get statsCards() { 
+                    return [
+                        { label: 'Total Identities', value: this.stats.total_users, icon: 'fa-solid fa-users', context: 'Registered in DB' },
+                        { label: 'Network Reqs', value: this.formatNumber(this.stats.total_requests), icon: 'fa-solid fa-bolt', context: 'All-time volume' },
+                        { label: 'Token Consumption', value: this.formatNumber(this.stats.total_tokens), icon: 'fa-solid fa-fire', context: 'Global burn rate' },
+                        { label: 'Projected Cost', value: '$' + this.stats.total_cost.toFixed(3), icon: 'fa-solid fa-dollar-sign', context: 'Net AI exposure' }
+                    ]; 
+                },
                 async init() { if (this.adminKey) { await this.refreshAll(); setInterval(() => this.refreshAll(), 15000); } },
                 toggleTheme() { this.darkMode = !this.darkMode; localStorage.setItem('theme', this.darkMode ? 'dark' : 'light'); },
                 saveKey() { this.adminKey = this.keyInput; localStorage.setItem('adminKey', this.adminKey); this.init(); },
@@ -182,17 +239,15 @@
                     this.loading = true;
                     try {
                         const headers = { 'x-admin-key': this.adminKey };
-                        const [u, p, log, gps, wgs] = await Promise.all([
+                        const [u, p, log, gps, wgs, s] = await Promise.all([
                             fetch('/admin/users', { headers }).then(r => r.json()),
                             fetch('/admin/policies', { headers }).then(r => r.json()),
                             fetch('/admin/usage', { headers }).then(r => r.json()),
                             fetch('/admin/group-policies', { headers }).then(r => r.json()),
-                            fetch('/admin/openwebui-groups', { headers }).then(r => r.json())
+                            fetch('/admin/openwebui-groups', { headers }).then(r => r.json()),
+                            fetch('/admin/stats', { headers }).then(r => r.json())
                         ]);
-                        this.users = u; this.policies = p; this.usage = log; this.groupPolicies = gps; this.webuiGroups = wgs;
-                        this.stats.totalUsers = u.length; this.stats.totalPolicies = p.length;
-                        this.stats.totalTokens = log.reduce((sum, l) => sum + (parseInt(l.total_tokens) || 0), 0);
-                        this.stats.totalCost = log.reduce((sum, l) => sum + (parseFloat(l.total_cost) || 0), 0);
+                        this.users = u; this.policies = p; this.usage = log; this.groupPolicies = gps; this.webuiGroups = wgs; this.stats = s;
                     } catch (e) { console.error(e); } finally { this.loading = false; }
                 },
                 async toggleUserStatus(user) { await fetch(`/admin/users/${user.id}`, { method: 'PATCH', headers: { 'x-admin-key': this.adminKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: !user.is_active }) }); await this.refreshAll(); },
@@ -201,7 +256,7 @@
                 async deletePolicy(id) { if (confirm('Delete?')) await fetch(`/admin/policies/${id}`, { method: 'DELETE', headers: { 'x-admin-key': this.adminKey } }); await this.refreshAll(); },
                 async saveGroupPolicy() { await fetch('/admin/group-policies', { method: 'POST', headers: { 'x-admin-key': this.adminKey, 'Content-Type': 'application/json' }, body: JSON.stringify(this.newGroupPolicy) }); this.newGroupPolicy = { group_name: '', policy_id: '', priority: 0 }; await this.refreshAll(); },
                 async deleteGroupMapping(name) { await fetch(`/admin/group-policies/${name}`, { method: 'DELETE', headers: { 'x-admin-key': this.adminKey } }); await this.refreshAll(); },
-                formatNumber(n) { return new Intl.NumberFormat().format(n); },
+                formatNumber(n) { return new Intl.NumberFormat().format(n || 0); },
                 formatDate(d) { return new Date(d).toLocaleDateString(); },
                 formatDateTimeShort(d) { return new Date(d).toLocaleTimeString(); }
             }
