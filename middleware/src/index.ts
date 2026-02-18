@@ -69,33 +69,35 @@ async function ensureUserExists(userId: string) {
   }
 }
 
+async function resolveEffectivePolicy(user: any, groups: string[]) {
+    let effectivePolicyId = user.policy_id;
+
+    // If user is set to 'default', try to upgrade via group policies
+    if (effectivePolicyId === 'default' && groups.length > 0) {
+        const groupPolicy: any = await db.get(`
+            SELECT gp.policy_id 
+            FROM group_policies gp
+            JOIN policies p ON gp.policy_id = p.id
+            WHERE gp.group_name = ANY($1) 
+            ORDER BY gp.priority DESC LIMIT 1
+        `, [groups]);
+        
+        if (groupPolicy) {
+            effectivePolicyId = groupPolicy.policy_id;
+        }
+    }
+    return effectivePolicyId;
+}
+
 async function checkAccess(userId: string): Promise<{ allowed: boolean; reason?: string; groups: string[] }> {
   const user: any = await db.get("SELECT * FROM users WHERE id = $1", [userId]);
   const groups = await getUserGroups(userId);
 
   if (!user || !user.is_active) return { allowed: false, reason: "User inactive or not found", groups };
 
-  // PRECEDENCE LOGIC:
-  // 1. Individual Override (If policy_id is NOT 'default')
-  // 2. Group Policy (If user has groups and a mapping exists, pick highest priority)
-  // 3. System Default ('default')
-  
-  let activePolicyId = user.policy_id;
-
-  // If the user's assigned policy is 'default', check if their groups have a better one.
-  if (activePolicyId === 'default' && groups.length > 0) {
-      const groupPolicy: any = await db.get(`
-          SELECT policy_id FROM group_policies 
-          WHERE group_name = ANY($1) 
-          ORDER BY priority DESC LIMIT 1
-      `, [groups]);
-      if (groupPolicy) {
-          activePolicyId = groupPolicy.policy_id;
-          console.log(`🏷️ Group policy applied for ${userId}: ${activePolicyId}`);
-      }
-  }
-
+  const activePolicyId = await resolveEffectivePolicy(user, groups);
   const policy: any = await db.get("SELECT * FROM policies WHERE id = $1", [activePolicyId]);
+  
   if (!policy) return { allowed: false, reason: `Policy ${activePolicyId} not found`, groups };
 
   const dailyKey = `usage:user:${userId}:daily:${new Date().toISOString().split('T')[0]}`;
@@ -275,10 +277,19 @@ const app = new Elysia()
         const auth = request.headers.get("x-admin-key");
         if (auth !== ADMIN_API_KEY) { set.status = 401; return "Unauthorized"; }
       })
-      .get("/users", () => db.all("SELECT * FROM users"))
-      .get("/policies", () => db.all("SELECT * FROM policies"))
+      .get("/users", async () => {
+        const users = await db.all("SELECT * FROM users ORDER BY created_at DESC");
+        const results = [];
+        for (const user of users) {
+            const groups = await getUserGroups(user.id);
+            const effectivePolicyId = await resolveEffectivePolicy(user, groups);
+            results.push({ ...user, groups, effective_policy_id: effectivePolicyId });
+        }
+        return results;
+      })
+      .get("/policies", () => db.all("SELECT * FROM policies ORDER BY created_at DESC"))
       .get("/usage", () => db.all("SELECT * FROM usage_logs ORDER BY ts DESC LIMIT 100"))
-      .get("/group-policies", () => db.all("SELECT * FROM group_policies"))
+      .get("/group-policies", () => db.all("SELECT * FROM group_policies ORDER BY priority DESC"))
       .get("/openwebui-groups", () => webuiDb.all('SELECT name FROM "group"'))
       .post("/group-policies", async ({ body }: any) => {
         const { group_name, policy_id, priority } = body;
