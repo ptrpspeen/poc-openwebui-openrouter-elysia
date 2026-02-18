@@ -75,22 +75,20 @@ async function checkAccess(userId: string): Promise<{ allowed: boolean; reason?:
 
   if (!user || !user.is_active) return { allowed: false, reason: "User inactive or not found", groups };
 
-  // Phase 4: Group-based Policy Selection
-  // 1. Check if user has a specific policy override
-  // 2. If not, check user groups for the highest priority policy
-  // 3. Fallback to 'default' policy
-  
+  // Logic: Resolve Active Policy
   let activePolicyId = user.policy_id;
 
-  if (activePolicyId === 'default' && groups.length > 0) {
-      const groupPolicy: any = await db.get(`
-          SELECT policy_id FROM group_policies 
-          WHERE group_name = ANY($1) 
-          ORDER BY priority DESC LIMIT 1
-      `, [groups]);
-      if (groupPolicy) {
-          activePolicyId = groupPolicy.policy_id;
-          console.log(`🏷️ Group policy applied for ${userId}: ${activePolicyId} (from groups: ${groups})`);
+  // If user is set to 'default', try to upgrade to a group-based policy
+  if (activePolicyId === 'default') {
+      if (groups.length > 0) {
+          const groupPolicy: any = await db.get(`
+              SELECT policy_id FROM group_policies 
+              WHERE group_name = ANY($1) 
+              ORDER BY priority DESC LIMIT 1
+          `, [groups]);
+          if (groupPolicy) {
+              activePolicyId = groupPolicy.policy_id;
+          }
       }
   }
 
@@ -222,7 +220,6 @@ const app = new Elysia()
 
     const upstreamUrl = `${OPENROUTER_BASE}/v1/${path}`;
     let rawUserId = request.headers.get("x-openwebui-user-email") || request.headers.get("x-openwebui-user-id");
-    let userRole = request.headers.get("x-openwebui-user-role");
     let userId: string | null = rawUserId ? rawUserId.toLowerCase().trim() : null;
 
     if (!userId) {
@@ -240,8 +237,6 @@ const app = new Elysia()
       if (userId) {
         const access = await checkAccess(userId);
         if (!access.allowed) { set.status = 403; return { error: access.reason }; }
-        // Pass group info to AI if needed or use for internal logic
-        console.log(`User ${userId} groups:`, access.groups);
         body.user = userId;
       }
     }
