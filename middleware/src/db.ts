@@ -22,7 +22,8 @@ export const db = {
 
 export const webuiDb = {
     get: async (text: string, params?: any[]) => (await webuiPool.query(text, params)).rows[0],
-    all: async (text: string, params?: any[]) => (await webuiPool.query(text, params)).rows
+    all: async (text: string, params?: any[]) => (await webuiPool.query(text, params)).rows,
+    run: async (text: string, params?: any[]) => await webuiPool.query(text, params)
 };
 
 export async function initDb() {

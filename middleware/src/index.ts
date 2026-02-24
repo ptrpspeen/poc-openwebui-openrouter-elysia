@@ -19,11 +19,48 @@ if (missing.length) {
   throw new Error(`Missing required config: ${missing.join(", ")}`);
 }
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY as string;
-const ADMIN_API_KEY = process.env.ADMIN_API_KEY as string;
-const OPENROUTER_HTTP_REFERER = process.env.OPENROUTER_HTTP_REFERER as string;
-const OPENROUTER_X_TITLE = process.env.OPENROUTER_X_TITLE as string;
-const LOG_MODE = process.env.LOG_MODE as string;
+let OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY as string;
+let ADMIN_API_KEY = process.env.ADMIN_API_KEY as string;
+let OPENROUTER_HTTP_REFERER = process.env.OPENROUTER_HTTP_REFERER as string;
+let OPENROUTER_X_TITLE = process.env.OPENROUTER_X_TITLE as string;
+let LOG_MODE = process.env.LOG_MODE as string;
+
+const CONFIG_KEYS = [
+  "OPENROUTER_API_KEY",
+  "ADMIN_API_KEY",
+  "OPENROUTER_HTTP_REFERER",
+  "OPENROUTER_X_TITLE",
+  "LOG_MODE",
+  "REDIS_URL",
+  "DATABASE_URL",
+  "WEBUI_DATABASE_URL",
+] as const;
+
+type SystemLog = { ts: string; level: "info" | "warn" | "error"; message: string; meta?: any };
+const SYSTEM_LOG_LIMIT = 500;
+const systemLogs: SystemLog[] = [];
+
+function writeSystemLog(level: SystemLog["level"], message: string, meta?: any) {
+  systemLogs.unshift({ ts: new Date().toISOString(), level, message, meta });
+  if (systemLogs.length > SYSTEM_LOG_LIMIT) systemLogs.pop();
+}
+
+function maskConfigValue(key: string, value?: string) {
+  if (!value) return "";
+  if (key.includes("KEY") || key.includes("PASSWORD") || key.includes("SECRET")) {
+    if (value.length <= 8) return "********";
+    return `${value.slice(0, 4)}********${value.slice(-4)}`;
+  }
+  return value;
+}
+
+function refreshRuntimeConfig() {
+  OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY as string;
+  ADMIN_API_KEY = process.env.ADMIN_API_KEY as string;
+  OPENROUTER_HTTP_REFERER = process.env.OPENROUTER_HTTP_REFERER as string;
+  OPENROUTER_X_TITLE = process.env.OPENROUTER_X_TITLE as string;
+  LOG_MODE = process.env.LOG_MODE as string;
+}
 
 const HOP_BY_HOP_HEADERS = new Set([
   "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
@@ -153,6 +190,36 @@ async function processUsage(userId: string | null, model: string, usage: any) {
   ]);
 }
 
+async function getSystemHealth() {
+  const out: any = { status: "ok", ts: new Date().toISOString(), checks: {} };
+  try {
+    await db.run("SELECT 1");
+    out.checks.database = { ok: true };
+  } catch (e: any) {
+    out.status = "degraded";
+    out.checks.database = { ok: false, error: e?.message || String(e) };
+  }
+
+  try {
+    await webuiDb.run ? await (webuiDb as any).run("SELECT 1") : await webuiDb.get("SELECT 1 as ok");
+    out.checks.webui_database = { ok: true };
+  } catch (e: any) {
+    out.status = "degraded";
+    out.checks.webui_database = { ok: false, error: e?.message || String(e) };
+  }
+
+  try {
+    const pong = await redis.ping();
+    const queueLength = await redis.llen("usage_queue");
+    out.checks.redis = { ok: pong === "PONG", queueLength };
+  } catch (e: any) {
+    out.status = "degraded";
+    out.checks.redis = { ok: false, error: e?.message || String(e) };
+  }
+
+  return out;
+}
+
 async function startBackgroundWorker() {
   console.log("👷 Background Worker started");
   while (true) {
@@ -167,7 +234,10 @@ async function startBackgroundWorker() {
       } else {
         await new Promise(r => setTimeout(r, 5000));
       }
-    } catch (e) { console.error("Worker Error:", e); }
+    } catch (e: any) {
+      console.error("Worker Error:", e);
+      writeSystemLog("error", "Background worker error", { error: e?.message || String(e) });
+    }
   }
 }
 
@@ -268,6 +338,14 @@ const app = new Elysia()
       body: body ? JSON.stringify(body) : (request.method === "GET" ? null : await request.arrayBuffer()),
     });
 
+    if (!upstreamResponse.ok) {
+      writeSystemLog("warn", "Upstream returned non-2xx", {
+        status: upstreamResponse.status,
+        path,
+        userId,
+      });
+    }
+
     const responseHeaders = cleanResponseHeaders(upstreamResponse.headers);
 
     if (upstreamResponse.headers.get("content-type")?.includes("text/event-stream")) {
@@ -364,10 +442,35 @@ const app = new Elysia()
               top_users: topUsers
           };
       })
+      .get("/config", () => {
+        const config: Record<string, string> = {};
+        const masked: Record<string, string> = {};
+        for (const key of CONFIG_KEYS) {
+          config[key] = process.env[key] || "";
+          masked[key] = maskConfigValue(key, process.env[key]);
+        }
+        return { config, masked };
+      })
+      .post("/config", async ({ body }: any) => {
+        const updates = body?.config || {};
+        const changed: string[] = [];
+        for (const key of Object.keys(updates)) {
+          if ((CONFIG_KEYS as readonly string[]).includes(key)) {
+            process.env[key] = String(updates[key] ?? "");
+            changed.push(key);
+          }
+        }
+        refreshRuntimeConfig();
+        writeSystemLog("info", "Config updated via admin API", { changed });
+        return { success: true, changed };
+      })
+      .get("/health", async () => await getSystemHealth())
+      .get("/system-logs", () => ({ logs: systemLogs }))
   )
   .get("/", () => Bun.file("public/index.html"))
   .listen(8080);
 
 console.log(`🦊 AI Control Plane running at http://localhost:${app.server?.port}`);
+writeSystemLog("info", "Middleware started", { port: app.server?.port });
 await initDb();
 startBackgroundWorker();
