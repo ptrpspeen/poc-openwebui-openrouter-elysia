@@ -3,6 +3,7 @@ import { staticPlugin } from "@elysiajs/static";
 import { cors } from "@elysiajs/cors";
 import { db, webuiDb, initDb } from "./db";
 import { redis } from "./redis";
+import { Redis } from "ioredis";
 
 const OPENROUTER_BASE = "https://openrouter.ai/api";
 
@@ -35,6 +36,7 @@ const CONFIG_KEYS = [
   "DATABASE_URL",
   "WEBUI_DATABASE_URL",
 ] as const;
+const CONFIG_SYNC_CHANNEL = "middleware:config:updated";
 
 type SystemLog = { ts: string; level: "info" | "warn" | "error"; message: string; meta?: any };
 const SYSTEM_LOG_LIMIT = 500;
@@ -60,6 +62,53 @@ function refreshRuntimeConfig() {
   OPENROUTER_HTTP_REFERER = process.env.OPENROUTER_HTTP_REFERER as string;
   OPENROUTER_X_TITLE = process.env.OPENROUTER_X_TITLE as string;
   LOG_MODE = process.env.LOG_MODE as string;
+}
+
+function validateConfigMap(input: Record<string, string>) {
+  const missingRequired = required.filter((k) => !input[k] || input[k].trim() === "");
+  if (missingRequired.length) {
+    throw new Error(`Missing required config: ${missingRequired.join(", ")}`);
+  }
+}
+
+async function ensureConfigStore() {
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS system_config (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  for (const key of CONFIG_KEYS) {
+    const value = process.env[key] || "";
+    await db.run(
+      "INSERT INTO system_config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING",
+      [key, value]
+    );
+  }
+}
+
+async function loadRuntimeConfigFromDb() {
+  const rows = await db.all("SELECT key, value FROM system_config WHERE key = ANY($1)", [CONFIG_KEYS]);
+  const fromDb: Record<string, string> = {};
+  for (const r of rows) fromDb[r.key] = r.value || "";
+  validateConfigMap(fromDb);
+  for (const key of CONFIG_KEYS) {
+    process.env[key] = fromDb[key] || "";
+  }
+  refreshRuntimeConfig();
+}
+
+async function persistConfig(updates: Record<string, string>) {
+  for (const [key, value] of Object.entries(updates)) {
+    await db.run(
+      `INSERT INTO system_config (key, value, updated_at)
+       VALUES ($1, $2, CURRENT_TIMESTAMP)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
+      [key, value]
+    );
+  }
 }
 
 const HOP_BY_HOP_HEADERS = new Set([
@@ -218,6 +267,20 @@ async function getSystemHealth() {
   }
 
   return out;
+}
+
+async function startConfigSubscriber() {
+  const subscriber = new Redis(process.env.REDIS_URL as string, { maxRetriesPerRequest: null });
+  await subscriber.subscribe(CONFIG_SYNC_CHANNEL);
+  subscriber.on("message", async (channel, message) => {
+    if (channel !== CONFIG_SYNC_CHANNEL) return;
+    try {
+      await loadRuntimeConfigFromDb();
+      writeSystemLog("info", "Config reloaded from pub/sub", { message });
+    } catch (e: any) {
+      writeSystemLog("error", "Config reload failed", { error: e?.message || String(e) });
+    }
+  });
 }
 
 async function startBackgroundWorker() {
@@ -442,25 +505,46 @@ const app = new Elysia()
               top_users: topUsers
           };
       })
-      .get("/config", () => {
+      .get("/config", async () => {
+        const rows = await db.all("SELECT key, value, updated_at FROM system_config WHERE key = ANY($1)", [CONFIG_KEYS]);
         const config: Record<string, string> = {};
         const masked: Record<string, string> = {};
-        for (const key of CONFIG_KEYS) {
-          config[key] = process.env[key] || "";
-          masked[key] = maskConfigValue(key, process.env[key]);
+        let updatedAt: string | null = null;
+        for (const row of rows) {
+          config[row.key] = row.value || "";
+          masked[row.key] = maskConfigValue(row.key, row.value);
+          if (!updatedAt || new Date(row.updated_at).getTime() > new Date(updatedAt).getTime()) {
+            updatedAt = row.updated_at;
+          }
         }
-        return { config, masked };
+        return { config, masked, updatedAt };
       })
-      .post("/config", async ({ body }: any) => {
+      .post("/config", async ({ body, set }: any) => {
         const updates = body?.config || {};
         const changed: string[] = [];
+
+        const currentRows = await db.all("SELECT key, value FROM system_config WHERE key = ANY($1)", [CONFIG_KEYS]);
+        const merged: Record<string, string> = {};
+        for (const row of currentRows) merged[row.key] = row.value || "";
+
         for (const key of Object.keys(updates)) {
           if ((CONFIG_KEYS as readonly string[]).includes(key)) {
-            process.env[key] = String(updates[key] ?? "");
+            merged[key] = String(updates[key] ?? "");
             changed.push(key);
           }
         }
-        refreshRuntimeConfig();
+
+        try {
+          validateConfigMap(merged);
+        } catch (e: any) {
+          set.status = 400;
+          return { success: false, error: e?.message || String(e) };
+        }
+
+        await persistConfig(merged);
+        await loadRuntimeConfigFromDb();
+        await redis.publish(CONFIG_SYNC_CHANNEL, JSON.stringify({ changed, ts: new Date().toISOString() }));
+
         writeSystemLog("info", "Config updated via admin API", { changed });
         return { success: true, changed };
       })
@@ -473,4 +557,7 @@ const app = new Elysia()
 console.log(`🦊 AI Control Plane running at http://localhost:${app.server?.port}`);
 writeSystemLog("info", "Middleware started", { port: app.server?.port });
 await initDb();
+await ensureConfigStore();
+await loadRuntimeConfigFromDb();
+await startConfigSubscriber();
 startBackgroundWorker();

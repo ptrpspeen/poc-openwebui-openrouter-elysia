@@ -26,7 +26,7 @@ spec:
     spec:
       containers:
       - name: middleware
-        image: poc-openwebui-openrouter-elysia-middleware:latest
+        image: poc-openwebui-openrouter-elysia-middleware:c82ef18
         imagePullPolicy: Never # We'll build it locally in minikube
         ports:
         - containerPort: 8080
@@ -41,6 +41,11 @@ spec:
             secretKeyRef:
               name: ai-secrets
               key: OPENROUTER_API_KEY
+        - name: ADMIN_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ai-secrets
+              key: ADMIN_API_KEY
         livenessProbe:
           httpGet:
             path: /health
