@@ -26,12 +26,13 @@ services:
       - db
     environment:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - REDIS_URL=redis://redis:6379
-      - DATABASE_URL=postgresql://admin:adminpassword@db:5432/ai_control
-      - WEBUI_DATABASE_URL=postgresql://admin:adminpassword@db:5432/openwebui
-      - OPENROUTER_HTTP_REFERER=http://localhost:3000
-      - OPENROUTER_X_TITLE=OpenWebUI-Local-POC
-      - LOG_MODE=metadata
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-admin-secret-key}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://admin:adminpassword@db:5432/ai_control}
+      - WEBUI_DATABASE_URL=${WEBUI_DATABASE_URL:-postgresql://admin:adminpassword@db:5432/openwebui}
+      - OPENROUTER_HTTP_REFERER=${OPENROUTER_HTTP_REFERER:-http://localhost:3000}
+      - OPENROUTER_X_TITLE=${OPENROUTER_X_TITLE:-OpenWebUI-Local-POC}
+      - LOG_MODE=${LOG_MODE:-metadata}
     ports:
       - "8080:8080"
     restart: unless-stopped
