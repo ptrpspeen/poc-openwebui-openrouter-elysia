@@ -1,6 +1,10 @@
 import { Redis } from "ioredis";
 
-const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+if (!process.env.REDIS_URL || process.env.REDIS_URL.trim() === "") {
+  throw new Error("Missing required config: REDIS_URL");
+}
+
+const redisUrl = process.env.REDIS_URL;
 
 export const redis = new Redis(redisUrl, {
   maxRetriesPerRequest: null,

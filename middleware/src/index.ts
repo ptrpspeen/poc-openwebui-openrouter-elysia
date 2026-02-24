@@ -5,11 +5,25 @@ import { db, webuiDb, initDb } from "./db";
 import { redis } from "./redis";
 
 const OPENROUTER_BASE = "https://openrouter.ai/api";
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
-const ADMIN_API_KEY = process.env.ADMIN_API_KEY || "admin-secret-key";
-const OPENROUTER_HTTP_REFERER = process.env.OPENROUTER_HTTP_REFERER;
-const OPENROUTER_X_TITLE = process.env.OPENROUTER_X_TITLE;
-const LOG_MODE = process.env.LOG_MODE || "metadata"; 
+
+const required = [
+  "OPENROUTER_API_KEY",
+  "ADMIN_API_KEY",
+  "OPENROUTER_HTTP_REFERER",
+  "OPENROUTER_X_TITLE",
+  "LOG_MODE",
+] as const;
+
+const missing = required.filter((k) => !process.env[k] || process.env[k]!.trim() === "");
+if (missing.length) {
+  throw new Error(`Missing required config: ${missing.join(", ")}`);
+}
+
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY as string;
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY as string;
+const OPENROUTER_HTTP_REFERER = process.env.OPENROUTER_HTTP_REFERER as string;
+const OPENROUTER_X_TITLE = process.env.OPENROUTER_X_TITLE as string;
+const LOG_MODE = process.env.LOG_MODE as string;
 
 const HOP_BY_HOP_HEADERS = new Set([
   "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",

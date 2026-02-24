@@ -1,10 +1,16 @@
 import { Pool } from "pg";
 
-const connectionString = process.env.DATABASE_URL || "postgresql://admin:adminpassword@localhost:5432/ai_control";
-const webuiConnectionString = process.env.WEBUI_DATABASE_URL;
+const required = ["DATABASE_URL", "WEBUI_DATABASE_URL"] as const;
+const missing = required.filter((k) => !process.env[k] || process.env[k]!.trim() === "");
+if (missing.length) {
+  throw new Error(`Missing required config: ${missing.join(", ")}`);
+}
+
+const connectionString = process.env.DATABASE_URL as string;
+const webuiConnectionString = process.env.WEBUI_DATABASE_URL as string;
 
 export const pool = new Pool({ connectionString });
-export const webuiPool = webuiConnectionString ? new Pool({ connectionString: webuiConnectionString }) : null;
+export const webuiPool = new Pool({ connectionString: webuiConnectionString });
 
 // Helper for easier queries
 export const db = {
@@ -15,8 +21,8 @@ export const db = {
 };
 
 export const webuiDb = {
-    get: async (text: string, params?: any[]) => webuiPool ? (await webuiPool.query(text, params)).rows[0] : null,
-    all: async (text: string, params?: any[]) => webuiPool ? (await webuiPool.query(text, params)).rows : []
+    get: async (text: string, params?: any[]) => (await webuiPool.query(text, params)).rows[0],
+    all: async (text: string, params?: any[]) => (await webuiPool.query(text, params)).rows
 };
 
 export async function initDb() {
