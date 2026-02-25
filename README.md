@@ -28,6 +28,8 @@ graph TD
 
 ## ⚙️ Configuration Guide
 
+> Recommended strategy and precedence: see `CONFIG_STRATEGY.md`
+
 The system manages configurations differently based on the deployment environment.
 
 ### 1. Variables Overview
