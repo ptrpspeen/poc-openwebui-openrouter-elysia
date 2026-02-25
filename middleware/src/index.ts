@@ -315,6 +315,34 @@ function cleanResponseHeaders(headers: Headers): Record<string, string> {
   return result;
 }
 
+async function logRequestPerformance(args: {
+  userId: string | null;
+  model: string;
+  path: string;
+  method: string;
+  status: number;
+  isStream: boolean;
+  startedAt: Date;
+  completedAt: Date;
+}) {
+  const latencyMs = Math.max(0, args.completedAt.getTime() - args.startedAt.getTime());
+  await db.run(
+    `INSERT INTO request_logs (user_id, model, path, method, status, is_stream, latency_ms, started_at, completed_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [
+      args.userId,
+      args.model,
+      args.path,
+      args.method,
+      args.status,
+      args.isStream,
+      latencyMs,
+      args.startedAt.toISOString(),
+      args.completedAt.toISOString(),
+    ]
+  );
+}
+
 async function* streamWithUsageTracking(response: Response, userId: string | null): AsyncGenerator<Uint8Array> {
   const reader = response.body?.getReader();
   if (!reader) return;
@@ -351,12 +379,24 @@ const app = new Elysia()
   .use(cors())
   .use(staticPlugin())
   .all("/v1/*", async ({ request, params, set }) => {
+    const requestStartedAt = new Date();
     if (!OPENROUTER_API_KEY) { set.status = 500; return "OPENROUTER_API_KEY not set"; }
     const path = (params as { "*": string })["*"];
     
     if (path === "models" && request.method === "GET") {
         const upstreamResponse = await fetch(`${OPENROUTER_BASE}/v1/models`, {
             headers: { "Authorization": `Bearer ${OPENROUTER_API_KEY}`, "Accept": "application/json" }
+        });
+        const completedAt = new Date();
+        await logRequestPerformance({
+          userId: null,
+          model: "models",
+          path,
+          method: request.method,
+          status: upstreamResponse.status,
+          isStream: false,
+          startedAt: requestStartedAt,
+          completedAt,
         });
         return new Response(await upstreamResponse.arrayBuffer(), { 
             status: upstreamResponse.status, 
@@ -414,14 +454,39 @@ const app = new Elysia()
     if (upstreamResponse.headers.get("content-type")?.includes("text/event-stream")) {
       const stream = new ReadableStream({
         async start(controller) {
-          for await (const chunk of streamWithUsageTracking(upstreamResponse, userId)) controller.enqueue(chunk);
-          controller.close();
+          try {
+            for await (const chunk of streamWithUsageTracking(upstreamResponse, userId)) controller.enqueue(chunk);
+            controller.close();
+          } finally {
+            const completedAt = new Date();
+            await logRequestPerformance({
+              userId,
+              model: modelName,
+              path,
+              method: request.method,
+              status: upstreamResponse.status,
+              isStream: true,
+              startedAt: requestStartedAt,
+              completedAt,
+            });
+          }
         },
       });
       return new Response(stream, { status: upstreamResponse.status, headers: responseHeaders });
     } else {
       const respData = await upstreamResponse.json();
       if (respData.usage) await processUsage(userId, respData.model || modelName, respData.usage);
+      const completedAt = new Date();
+      await logRequestPerformance({
+        userId,
+        model: respData.model || modelName,
+        path,
+        method: request.method,
+        status: upstreamResponse.status,
+        isStream: false,
+        startedAt: requestStartedAt,
+        completedAt,
+      });
       return new Response(JSON.stringify(respData), { status: upstreamResponse.status, headers: responseHeaders });
     }
   })
@@ -490,6 +555,15 @@ const app = new Elysia()
           
           const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
           const last24h = await db.get("SELECT SUM(total_tokens) as tokens, SUM(total_cost) as cost FROM usage_logs WHERE ts >= $1", [yesterday]);
+          const perf = await db.get(`
+            SELECT
+              COUNT(*)::int AS requests,
+              COALESCE(AVG(latency_ms), 0)::float AS avg_latency_ms,
+              COALESCE(MAX(latency_ms), 0)::int AS max_latency_ms,
+              COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms), 0)::float AS p95_latency_ms
+            FROM request_logs
+            WHERE started_at >= $1
+          `, [yesterday]);
 
           return {
               total_users: parseInt(totalUsers.count),
@@ -499,11 +573,37 @@ const app = new Elysia()
               total_requests: parseInt(overallUsage.reqs || "0"),
               last_24h: {
                   tokens: parseInt(last24h.tokens || "0"),
-                  cost: parseFloat(last24h.cost || "0")
+                  cost: parseFloat(last24h.cost || "0"),
+                  requests: perf?.requests || 0,
+                  avg_latency_ms: Number(perf?.avg_latency_ms || 0),
+                  p95_latency_ms: Number(perf?.p95_latency_ms || 0),
+                  max_latency_ms: Number(perf?.max_latency_ms || 0)
               },
               top_models: topModels,
               top_users: topUsers
           };
+      })
+      .get("/performance", async () => {
+        const summary = await db.get(`
+          SELECT
+            COUNT(*)::int AS requests,
+            COALESCE(AVG(latency_ms), 0)::float AS avg_latency_ms,
+            COALESCE(MAX(latency_ms), 0)::int AS max_latency_ms,
+            COALESCE(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY latency_ms), 0)::float AS p50_latency_ms,
+            COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms), 0)::float AS p95_latency_ms,
+            COALESCE(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY latency_ms), 0)::float AS p99_latency_ms
+          FROM request_logs
+          WHERE started_at >= NOW() - INTERVAL '24 hours'
+        `);
+
+        const recent = await db.all(`
+          SELECT id, user_id, model, path, method, status, is_stream, latency_ms, started_at, completed_at
+          FROM request_logs
+          ORDER BY id DESC
+          LIMIT 200
+        `);
+
+        return { summary, recent };
       })
       .get("/config", async () => {
         const rows = await db.all("SELECT key, value, updated_at FROM system_config WHERE key = ANY($1)", [CONFIG_KEYS]);

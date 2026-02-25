@@ -83,6 +83,21 @@ export async function initDb() {
     )
   `);
 
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS request_logs (
+      id SERIAL PRIMARY KEY,
+      user_id TEXT,
+      model TEXT,
+      path TEXT,
+      method TEXT,
+      status INTEGER,
+      is_stream BOOLEAN DEFAULT FALSE,
+      latency_ms INTEGER,
+      started_at TIMESTAMP,
+      completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Insert default policy
   const defaultPolicy = await db.get("SELECT * FROM policies WHERE id = $1", ['default']);
   if (!defaultPolicy) {
