@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main, prod]
+  push:
+    branches: [dev, main, prod]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: middleware
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.9'
+
+      - name: Install deps
+        run: bun install --frozen-lockfile || bun install
+
+      - name: Type check
+        run: bunx tsc --noEmit
+
+      - name: Docker build check
+        run: docker build -t middleware-ci-check:latest .
