@@ -37,6 +37,7 @@ const CONFIG_KEYS = [
   "WEBUI_DATABASE_URL",
 ] as const;
 const CONFIG_SYNC_CHANNEL = "middleware:config:updated";
+const REQUEST_LOG_SAMPLE_RATE = 0.3;
 
 type SystemLog = { ts: string; level: "info" | "warn" | "error"; message: string; meta?: any };
 const SYSTEM_LOG_LIMIT = 500;
@@ -348,9 +349,9 @@ async function startBackgroundWorker() {
       const perfBatch = await drainQueue("request_perf_queue", 100);
       for (const p of perfBatch) {
         await db.run(
-          `INSERT INTO request_logs (user_id, model, path, method, status, is_stream, latency_ms, started_at, completed_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-          [p.user_id, p.model, p.path, p.method, p.status, p.is_stream, p.latency_ms, p.started_at, p.completed_at]
+          `INSERT INTO request_logs (user_id, model, path, method, status, is_stream, latency_ms, total_cost, started_at, completed_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          [p.user_id, p.model, p.path, p.method, p.status, p.is_stream, p.latency_ms, p.total_cost || 0, p.started_at, p.completed_at]
         );
       }
 
@@ -385,7 +386,10 @@ function logRequestPerformance(args: {
   isStream: boolean;
   startedAt: Date;
   completedAt: Date;
+  totalCost?: number;
 }) {
+  if (Math.random() > REQUEST_LOG_SAMPLE_RATE) return;
+
   const latencyMs = Math.max(0, args.completedAt.getTime() - args.startedAt.getTime());
   const payload = {
     user_id: args.userId,
@@ -395,6 +399,7 @@ function logRequestPerformance(args: {
     status: args.status,
     is_stream: args.isStream,
     latency_ms: latencyMs,
+    total_cost: Number(args.totalCost || 0),
     started_at: args.startedAt.toISOString(),
     completed_at: args.completedAt.toISOString(),
   };
@@ -457,6 +462,7 @@ const app = new Elysia()
           isStream: false,
           startedAt: requestStartedAt,
           completedAt,
+          totalCost: 0,
         });
         return new Response(await upstreamResponse.arrayBuffer(), { 
             status: upstreamResponse.status, 
@@ -528,6 +534,7 @@ const app = new Elysia()
               isStream: true,
               startedAt: requestStartedAt,
               completedAt,
+              totalCost: 0,
             });
           }
         },
@@ -546,6 +553,7 @@ const app = new Elysia()
         isStream: false,
         startedAt: requestStartedAt,
         completedAt,
+        totalCost: Number(respData?.usage?.cost || respData?.usage?.total_cost || 0),
       });
       return new Response(JSON.stringify(respData), { status: upstreamResponse.status, headers: responseHeaders });
     }
@@ -646,7 +654,30 @@ const app = new Elysia()
               top_users: topUsers
           };
       })
-      .get("/performance", async () => {
+      .get("/performance", async ({ query }: any) => {
+        const q = query || {};
+        const where: string[] = ["started_at >= NOW() - INTERVAL '24 hours'"];
+        const params: any[] = [];
+
+        if (q.user_id) {
+          params.push(`%${q.user_id}%`);
+          where.push(`user_id ILIKE $${params.length}`);
+        }
+        if (q.model) {
+          params.push(`%${q.model}%`);
+          where.push(`model ILIKE $${params.length}`);
+        }
+        if (q.path) {
+          params.push(`%${q.path}%`);
+          where.push(`path ILIKE $${params.length}`);
+        }
+        if (q.status) {
+          params.push(Number(q.status));
+          where.push(`status = $${params.length}`);
+        }
+
+        const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
         const summary = await db.get(`
           SELECT
             COUNT(*)::int AS requests,
@@ -654,19 +685,22 @@ const app = new Elysia()
             COALESCE(MAX(latency_ms), 0)::int AS max_latency_ms,
             COALESCE(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY latency_ms), 0)::float AS p50_latency_ms,
             COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms), 0)::float AS p95_latency_ms,
-            COALESCE(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY latency_ms), 0)::float AS p99_latency_ms
+            COALESCE(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY latency_ms), 0)::float AS p99_latency_ms,
+            COALESCE(SUM(total_cost), 0)::float AS total_cost,
+            COALESCE(AVG(total_cost), 0)::float AS avg_cost
           FROM request_logs
-          WHERE started_at >= NOW() - INTERVAL '24 hours'
-        `);
+          ${whereSql}
+        `, params);
 
         const recent = await db.all(`
-          SELECT id, user_id, model, path, method, status, is_stream, latency_ms, started_at, completed_at
+          SELECT id, user_id, model, path, method, status, is_stream, latency_ms, total_cost, started_at, completed_at
           FROM request_logs
+          ${whereSql}
           ORDER BY id DESC
           LIMIT 200
-        `);
+        `, params);
 
-        return { summary, recent };
+        return { summary, recent, sample_rate: REQUEST_LOG_SAMPLE_RATE };
       })
       .get("/config", async () => {
         const rows = await db.all("SELECT key, value, updated_at FROM system_config WHERE key = ANY($1)", [CONFIG_KEYS]);

@@ -236,19 +236,33 @@
 
                     <!-- LOGS -->
                     <section x-show="view === 'logs'" class="mb-10 space-y-8">
-                        <div class="glass p-6 rounded-2xl shadow-xl">
-                            <h2 class="text-sm font-black uppercase tracking-widest mb-4">Performance Summary (24h)</h2>
-                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div class="glass p-6 rounded-2xl shadow-xl space-y-5">
+                            <h2 class="text-sm font-black uppercase tracking-widest">Performance Filters</h2>
+                            <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+                                <input type="text" x-model="performanceFilter.user_id" placeholder="User contains..." class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
+                                <input type="text" x-model="performanceFilter.model" placeholder="Model contains..." class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
+                                <input type="text" x-model="performanceFilter.path" placeholder="Path contains..." class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
+                                <input type="number" x-model="performanceFilter.status" placeholder="Status" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
+                                <div class="flex gap-2">
+                                    <button @click="applyPerformanceFilter" class="luxury-gradient px-3 py-2 rounded-lg text-[10px] font-black uppercase text-white">Apply</button>
+                                    <button @click="resetPerformanceFilter" class="px-3 py-2 rounded-lg text-[10px] font-black uppercase border border-slate-300 dark:border-slate-700">Reset</button>
+                                </div>
+                            </div>
+                            <h2 class="text-sm font-black uppercase tracking-widest">Performance Summary (24h)</h2>
+                            <div class="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
                                 <div><div class="text-slate-400 text-xs">Avg</div><div class="font-bold" x-text="Math.round(performance.summary?.avg_latency_ms || 0) + ' ms'"></div></div>
                                 <div><div class="text-slate-400 text-xs">P50</div><div class="font-bold" x-text="Math.round(performance.summary?.p50_latency_ms || 0) + ' ms'"></div></div>
                                 <div><div class="text-slate-400 text-xs">P95</div><div class="font-bold" x-text="Math.round(performance.summary?.p95_latency_ms || 0) + ' ms'"></div></div>
                                 <div><div class="text-slate-400 text-xs">P99</div><div class="font-bold" x-text="Math.round(performance.summary?.p99_latency_ms || 0) + ' ms'"></div></div>
+                                <div><div class="text-slate-400 text-xs">Total Cost</div><div class="font-bold" x-text="'$' + Number(performance.summary?.total_cost || 0).toFixed(4)"></div></div>
+                                <div><div class="text-slate-400 text-xs">Avg Cost/Req</div><div class="font-bold" x-text="'$' + Number(performance.summary?.avg_cost || 0).toFixed(6)"></div></div>
                             </div>
+                            <div class="text-xs text-slate-400">Request-log sample rate: <span x-text="Math.round((performance.sample_rate || 0) * 100) + '%' "></span></div>
                         </div>
                         <div class="glass rounded-2xl overflow-hidden shadow-xl">
                             <div class="px-8 py-6 border-b border-slate-200 dark:border-slate-800/60 bg-white/50 dark:bg-slate-900/40"><h2 class="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">Request Latency Logs</h2></div>
-                            <div class="overflow-x-auto max-h-[360px]"><table class="w-full text-left font-mono text-[11px]"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] text-slate-400 uppercase"><tr><th class="px-6 py-3">Time</th><th class="px-6 py-3">User</th><th class="px-6 py-3">Path</th><th class="px-6 py-3">Status</th><th class="px-6 py-3 text-right">Latency</th></tr></thead>
-                                <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40"><template x-for="r in performance.recent" :key="r.id"><tr><td class="px-6 py-2" x-text="formatDateTimeShort(r.completed_at)"></td><td class="px-6 py-2" x-text="r.user_id || '-' "></td><td class="px-6 py-2" x-text="r.path"></td><td class="px-6 py-2" x-text="r.status"></td><td class="px-6 py-2 text-right font-bold" x-text="(r.latency_ms || 0) + ' ms'"></td></tr></template></tbody>
+                            <div class="overflow-x-auto max-h-[360px]"><table class="w-full text-left font-mono text-[11px]"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] text-slate-400 uppercase"><tr><th class="px-6 py-3">Time</th><th class="px-6 py-3">User</th><th class="px-6 py-3">Path</th><th class="px-6 py-3">Status</th><th class="px-6 py-3 text-right">Latency</th><th class="px-6 py-3 text-right">Cost</th></tr></thead>
+                                <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40"><template x-for="r in performance.recent" :key="r.id"><tr><td class="px-6 py-2" x-text="formatDateTimeShort(r.completed_at)"></td><td class="px-6 py-2" x-text="r.user_id || '-' "></td><td class="px-6 py-2" x-text="r.path"></td><td class="px-6 py-2" x-text="r.status"></td><td class="px-6 py-2 text-right font-bold" x-text="(r.latency_ms || 0) + ' ms'"></td><td class="px-6 py-2 text-right" x-text="'$' + Number(r.total_cost || 0).toFixed(6)"></td></tr></template></tbody>
                             </table></div>
                         </div>
                         <div class="glass rounded-2xl overflow-hidden shadow-xl">
@@ -275,6 +289,7 @@
                 menuItems: [{ id: 'overview', label: 'Command Center', icon: 'fa-solid fa-gauge-high' }, { id: 'users', label: 'User Hub', icon: 'fa-solid fa-user-gear' }, { id: 'groups', label: 'Group Logic', icon: 'fa-solid fa-sitemap' }, { id: 'policies', label: 'Quota Policies', icon: 'fa-solid fa-shield-halved' }, { id: 'system', label: 'System Health', icon: 'fa-solid fa-heart-pulse' }, { id: 'logs', label: 'Usage Logs', icon: 'fa-solid fa-receipt' }],
                 stats: { total_users: 0, total_policies: 0, total_tokens: 0, total_cost: 0, total_requests: 0, last_24h: { tokens: 0, cost: 0, requests: 0, avg_latency_ms: 0, p95_latency_ms: 0, max_latency_ms: 0 }, top_models: [], top_users: [] },
                 performance: { summary: {}, recent: [] },
+                performanceFilter: { user_id: '', model: '', path: '', status: '' },
                 newPolicy: { id: '', name: '', daily_token_limit: 50000, monthly_token_limit: 1000000, allowed_models: '*' },
                 newGroupPolicy: { group_name: '', policy_id: '', priority: 0 },
                 get statsCards() { 
@@ -282,6 +297,7 @@
                         { label: 'Total Identities', value: this.stats.total_users, icon: 'fa-solid fa-users', context: 'Registered in DB' },
                         { label: 'Network Reqs', value: this.formatNumber(this.stats.total_requests), icon: 'fa-solid fa-bolt', context: 'All-time volume' },
                         { label: 'Token Consumption', value: this.formatNumber(this.stats.total_tokens), icon: 'fa-solid fa-fire', context: 'Global burn rate' },
+                        { label: 'Total Cost', value: '$' + Number(this.stats.total_cost || 0).toFixed(4), icon: 'fa-solid fa-dollar-sign', context: 'All-time cost' },
                         { label: 'P95 Latency (24h)', value: Math.round(this.stats.last_24h.p95_latency_ms || 0) + ' ms', icon: 'fa-solid fa-stopwatch', context: 'Prompt to response' }
                     ]; 
                 },
@@ -293,6 +309,10 @@
                     this.loading = true;
                     try {
                         const headers = { 'x-admin-key': this.adminKey };
+                        const perfParams = new URLSearchParams();
+                        Object.entries(this.performanceFilter).forEach(([k, v]) => { if (v) perfParams.set(k, String(v)); });
+                        const perfUrl = '/admin/performance' + (perfParams.toString() ? `?${perfParams.toString()}` : '');
+
                         const [u, p, log, gps, wgs, s, perf, health, configRes, systemLogsRes] = await Promise.all([
                             fetch('/admin/users', { headers }).then(r => r.json()),
                             fetch('/admin/policies', { headers }).then(r => r.json()),
@@ -300,7 +320,7 @@
                             fetch('/admin/group-policies', { headers }).then(r => r.json()),
                             fetch('/admin/openwebui-groups', { headers }).then(r => r.json()),
                             fetch('/admin/stats', { headers }).then(r => r.json()),
-                            fetch('/admin/performance', { headers }).then(r => r.json()),
+                            fetch(perfUrl, { headers }).then(r => r.json()),
                             fetch('/admin/health', { headers }).then(r => r.json()),
                             fetch('/admin/config', { headers }).then(r => r.json()),
                             fetch('/admin/system-logs', { headers }).then(r => r.json())
@@ -325,6 +345,11 @@
                         headers: { 'x-admin-key': this.adminKey, 'Content-Type': 'application/json' },
                         body: JSON.stringify({ config: this.configDraft })
                     });
+                    await this.refreshAll();
+                },
+                async applyPerformanceFilter() { await this.refreshAll(); },
+                async resetPerformanceFilter() {
+                    this.performanceFilter = { user_id: '', model: '', path: '', status: '' };
                     await this.refreshAll();
                 },
                 formatNumber(n) { return new Intl.NumberFormat().format(n || 0); },

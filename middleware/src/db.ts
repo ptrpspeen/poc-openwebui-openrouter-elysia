@@ -93,10 +93,17 @@ export async function initDb() {
       status INTEGER,
       is_stream BOOLEAN DEFAULT FALSE,
       latency_ms INTEGER,
+      total_cost NUMERIC(15, 10) DEFAULT 0,
       started_at TIMESTAMP,
       completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  await db.run(`ALTER TABLE request_logs ADD COLUMN IF NOT EXISTS total_cost NUMERIC(15, 10) DEFAULT 0`);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_request_logs_started_at ON request_logs(started_at DESC)`);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_request_logs_completed_at ON request_logs(completed_at DESC)`);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_request_logs_user_started ON request_logs(user_id, started_at DESC)`);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_request_logs_model_started ON request_logs(model, started_at DESC)`);
 
   // Insert default policy
   const defaultPolicy = await db.get("SELECT * FROM policies WHERE id = $1", ['default']);
