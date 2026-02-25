@@ -145,7 +145,32 @@ function getUserFromJWT(token: string): string | null {
   } catch { return null; }
 }
 
+const USER_CACHE_TTL_MS = 60_000;
+const GROUP_CACHE_TTL_MS = 60_000;
+const POLICY_CACHE_TTL_MS = 60_000;
+
+const userCache = new Map<string, { value: any; expiresAt: number }>();
+const groupCache = new Map<string, { value: string[]; expiresAt: number }>();
+const policyCache = new Map<string, { value: any; expiresAt: number }>();
+
+function cacheGet<T>(map: Map<string, { value: T; expiresAt: number }>, key: string): T | null {
+  const hit = map.get(key);
+  if (!hit) return null;
+  if (Date.now() > hit.expiresAt) {
+    map.delete(key);
+    return null;
+  }
+  return hit.value;
+}
+
+function cacheSet<T>(map: Map<string, { value: T; expiresAt: number }>, key: string, value: T, ttlMs: number) {
+  map.set(key, { value, expiresAt: Date.now() + ttlMs });
+}
+
 async function getUserGroups(userId: string): Promise<string[]> {
+    const cached = cacheGet(groupCache, userId);
+    if (cached) return cached;
+
     try {
         const rows = await webuiDb.all(`
             SELECT g.name 
@@ -154,19 +179,35 @@ async function getUserGroups(userId: string): Promise<string[]> {
             JOIN "group" g ON gm.group_id = g.id 
             WHERE u.email = $1 OR u.id = $1
         `, [userId]);
-        return rows.map((r: any) => r.name);
+        const groups = rows.map((r: any) => r.name);
+        cacheSet(groupCache, userId, groups, GROUP_CACHE_TTL_MS);
+        return groups;
     } catch (e) {
         console.error("Failed to fetch user groups:", e);
         return [];
     }
 }
 
-async function ensureUserExists(userId: string) {
+async function getUserCached(userId: string) {
+  const cached = cacheGet(userCache, userId);
+  if (cached) return cached;
   const user = await db.get("SELECT * FROM users WHERE id = $1", [userId]);
-  if (!user) {
-    console.log(`👤 Auto-registering new user: ${userId}`);
-    await db.run("INSERT INTO users (id, policy_id) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING", [userId, "default"]);
-  }
+  if (user) cacheSet(userCache, userId, user, USER_CACHE_TTL_MS);
+  return user;
+}
+
+async function getPolicyCached(policyId: string) {
+  const cached = cacheGet(policyCache, policyId);
+  if (cached) return cached;
+  const policy = await db.get("SELECT * FROM policies WHERE id = $1", [policyId]);
+  if (policy) cacheSet(policyCache, policyId, policy, POLICY_CACHE_TTL_MS);
+  return policy;
+}
+
+async function ensureUserExists(userId: string) {
+  await db.run("INSERT INTO users (id, policy_id) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING", [userId, "default"]);
+  const user = await db.get("SELECT * FROM users WHERE id = $1", [userId]);
+  if (user) cacheSet(userCache, userId, user, USER_CACHE_TTL_MS);
 }
 
 async function resolveEffectivePolicy(user: any, groups: string[]) {
@@ -190,23 +231,22 @@ async function resolveEffectivePolicy(user: any, groups: string[]) {
 }
 
 async function checkAccess(userId: string): Promise<{ allowed: boolean; reason?: string; groups: string[] }> {
-  const user: any = await db.get("SELECT * FROM users WHERE id = $1", [userId]);
+  const user: any = await getUserCached(userId);
   const groups = await getUserGroups(userId);
 
   if (!user || !user.is_active) return { allowed: false, reason: "User inactive or not found", groups };
 
   const activePolicyId = await resolveEffectivePolicy(user, groups);
-  const policy: any = await db.get("SELECT * FROM policies WHERE id = $1", [activePolicyId]);
+  const policy: any = await getPolicyCached(activePolicyId);
   
   if (!policy) return { allowed: false, reason: `Policy ${activePolicyId} not found`, groups };
 
   const dailyKey = `usage:user:${userId}:daily:${new Date().toISOString().split('T')[0]}`;
   const monthlyKey = `usage:user:${userId}:monthly:${new Date().toISOString().slice(0, 7)}`;
 
-  const [dailyUsage, monthlyUsage] = await Promise.all([
-    redis.get(dailyKey).then(v => parseInt(v || "0")),
-    redis.get(monthlyKey).then(v => parseInt(v || "0"))
-  ]);
+  const usageVals = await redis.mget(dailyKey, monthlyKey);
+  const dailyUsage = parseInt(usageVals?.[0] || "0");
+  const monthlyUsage = parseInt(usageVals?.[1] || "0");
 
   if (policy.daily_token_limit > 0 && dailyUsage >= parseInt(policy.daily_token_limit)) {
     return { allowed: false, reason: "Daily token limit exceeded", groups };
@@ -283,23 +323,44 @@ async function startConfigSubscriber() {
   });
 }
 
+async function drainQueue(queue: string, batchSize = 50): Promise<any[]> {
+  const items: any[] = [];
+  for (let i = 0; i < batchSize; i++) {
+    const item = await redis.rpop(queue);
+    if (!item) break;
+    items.push(JSON.parse(item));
+  }
+  return items;
+}
+
 async function startBackgroundWorker() {
   console.log("👷 Background Worker started");
   while (true) {
     try {
-      const item = await redis.rpop("usage_queue");
-      if (item) {
-        const data = JSON.parse(item);
+      const usageBatch = await drainQueue("usage_queue", 100);
+      for (const data of usageBatch) {
         await db.run(
           "INSERT INTO usage_logs (user_id, model, prompt_tokens, completion_tokens, total_tokens, total_cost, ts) VALUES ($1, $2, $3, $4, $5, $6, $7)",
           [data.user_id, data.model, data.prompt_tokens, data.completion_tokens, data.total_tokens, data.total_cost, data.ts]
         );
-      } else {
-        await new Promise(r => setTimeout(r, 5000));
+      }
+
+      const perfBatch = await drainQueue("request_perf_queue", 100);
+      for (const p of perfBatch) {
+        await db.run(
+          `INSERT INTO request_logs (user_id, model, path, method, status, is_stream, latency_ms, started_at, completed_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [p.user_id, p.model, p.path, p.method, p.status, p.is_stream, p.latency_ms, p.started_at, p.completed_at]
+        );
+      }
+
+      if (usageBatch.length === 0 && perfBatch.length === 0) {
+        await new Promise(r => setTimeout(r, 1000));
       }
     } catch (e: any) {
       console.error("Worker Error:", e);
       writeSystemLog("error", "Background worker error", { error: e?.message || String(e) });
+      await new Promise(r => setTimeout(r, 1000));
     }
   }
 }
@@ -315,7 +376,7 @@ function cleanResponseHeaders(headers: Headers): Record<string, string> {
   return result;
 }
 
-async function logRequestPerformance(args: {
+function logRequestPerformance(args: {
   userId: string | null;
   model: string;
   path: string;
@@ -326,21 +387,20 @@ async function logRequestPerformance(args: {
   completedAt: Date;
 }) {
   const latencyMs = Math.max(0, args.completedAt.getTime() - args.startedAt.getTime());
-  await db.run(
-    `INSERT INTO request_logs (user_id, model, path, method, status, is_stream, latency_ms, started_at, completed_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [
-      args.userId,
-      args.model,
-      args.path,
-      args.method,
-      args.status,
-      args.isStream,
-      latencyMs,
-      args.startedAt.toISOString(),
-      args.completedAt.toISOString(),
-    ]
-  );
+  const payload = {
+    user_id: args.userId,
+    model: args.model,
+    path: args.path,
+    method: args.method,
+    status: args.status,
+    is_stream: args.isStream,
+    latency_ms: latencyMs,
+    started_at: args.startedAt.toISOString(),
+    completed_at: args.completedAt.toISOString(),
+  };
+  redis.lpush("request_perf_queue", JSON.stringify(payload)).catch((e) => {
+    writeSystemLog("error", "Failed to enqueue request performance", { error: e?.message || String(e) });
+  });
 }
 
 async function* streamWithUsageTracking(response: Response, userId: string | null): AsyncGenerator<Uint8Array> {
@@ -388,7 +448,7 @@ const app = new Elysia()
             headers: { "Authorization": `Bearer ${OPENROUTER_API_KEY}`, "Accept": "application/json" }
         });
         const completedAt = new Date();
-        await logRequestPerformance({
+        logRequestPerformance({
           userId: null,
           model: "models",
           path,
@@ -459,7 +519,7 @@ const app = new Elysia()
             controller.close();
           } finally {
             const completedAt = new Date();
-            await logRequestPerformance({
+            logRequestPerformance({
               userId,
               model: modelName,
               path,
@@ -477,7 +537,7 @@ const app = new Elysia()
       const respData = await upstreamResponse.json();
       if (respData.usage) await processUsage(userId, respData.model || modelName, respData.usage);
       const completedAt = new Date();
-      await logRequestPerformance({
+      logRequestPerformance({
         userId,
         model: respData.model || modelName,
         path,
@@ -531,6 +591,7 @@ const app = new Elysia()
         if (policy_id !== undefined) {
           await db.run("UPDATE users SET policy_id = $1 WHERE id = $2", [policy_id, params.id]);
         }
+        userCache.delete(params.id);
         return { success: true };
       })
       .post("/policies", async ({ body }: any) => {
@@ -539,11 +600,13 @@ const app = new Elysia()
           "INSERT INTO policies (id, name, daily_token_limit, monthly_token_limit, allowed_models) VALUES ($1, $2, $3, $4, $5) ON CONFLICT(id) DO UPDATE SET name=excluded.name, daily_token_limit=excluded.daily_token_limit, monthly_token_limit=excluded.monthly_token_limit, allowed_models=excluded.allowed_models",
           [id, name, daily_token_limit, monthly_token_limit, allowed_models]
         );
+        policyCache.delete(id);
         return { success: true };
       })
       .delete("/policies/:id", async ({ params }) => {
         if (params.id === 'default') return { success: false, error: "Cannot delete default policy" };
         await db.run("DELETE FROM policies WHERE id = $1", [params.id]);
+        policyCache.delete(params.id);
         return { success: true };
       })
       .get("/stats", async () => {
