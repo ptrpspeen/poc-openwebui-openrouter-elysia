@@ -133,6 +133,28 @@ function cleanHeaders(headers: Headers): Record<string, string> {
   return result;
 }
 
+function getBangkokDateParts(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+
+  const year = parts.find((p) => p.type === "year")?.value;
+  const month = parts.find((p) => p.type === "month")?.value;
+  const day = parts.find((p) => p.type === "day")?.value;
+
+  if (!year || !month || !day) {
+    throw new Error("Failed to derive Bangkok date parts");
+  }
+
+  return {
+    dayKey: `${year}-${month}-${day}`,
+    monthKey: `${year}-${month}`,
+  };
+}
+
 function getUserFromJWT(token: string): string | null {
   try {
     const parts = token.split(".");
@@ -242,8 +264,9 @@ async function checkAccess(userId: string): Promise<{ allowed: boolean; reason?:
   
   if (!policy) return { allowed: false, reason: `Policy ${activePolicyId} not found`, groups };
 
-  const dailyKey = `usage:user:${userId}:daily:${new Date().toISOString().split('T')[0]}`;
-  const monthlyKey = `usage:user:${userId}:monthly:${new Date().toISOString().slice(0, 7)}`;
+  const { dayKey, monthKey } = getBangkokDateParts();
+  const dailyKey = `usage:user:${userId}:daily:${dayKey}`;
+  const monthlyKey = `usage:user:${userId}:monthly:${monthKey}`;
 
   const usageVals = await redis.mget(dailyKey, monthlyKey);
   const dailyUsage = parseInt(usageVals?.[0] || "0");
@@ -262,8 +285,9 @@ async function checkAccess(userId: string): Promise<{ allowed: boolean; reason?:
 
 async function processUsage(userId: string | null, model: string, usage: any) {
   if (!userId) return;
-  const dailyKey = `usage:user:${userId}:daily:${new Date().toISOString().split('T')[0]}`;
-  const monthlyKey = `usage:user:${userId}:monthly:${new Date().toISOString().slice(0, 7)}`;
+  const { dayKey, monthKey } = getBangkokDateParts();
+  const dailyKey = `usage:user:${userId}:daily:${dayKey}`;
+  const monthlyKey = `usage:user:${userId}:monthly:${monthKey}`;
   const total = usage.total_tokens || (usage.prompt_tokens + usage.completion_tokens);
   const cost = usage.cost || usage.total_cost || 0;
   
