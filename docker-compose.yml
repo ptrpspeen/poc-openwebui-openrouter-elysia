@@ -34,7 +34,7 @@ services:
       - OPENROUTER_X_TITLE=${OPENROUTER_X_TITLE}
       - LOG_MODE=${LOG_MODE}
     ports:
-      - "8080:8080"
+      - "8081:8080"
     restart: unless-stopped
 
   openwebui:
@@ -42,24 +42,17 @@ services:
     container_name: openwebui
     depends_on:
       - middleware
+      - db
     environment:
       - OPENAI_API_BASE_URL=http://middleware:8080/v1
       - OPENAI_API_KEY=dummy_key
       - WEBUI_TELEMETRY=false
       - ENABLE_FORWARD_USER_INFO_HEADERS=true
+      - DATABASE_URL=postgresql://admin:adminpassword@db:5432/openwebui
     volumes:
       - openwebui_data:/app/backend/data
     ports:
-      - "3000:8080"
-    restart: unless-stopped
-
-volumes:
-  redis_data:
-  postgres_data:
-  openwebui_data:
-ckend/data
-    ports:
-      - "3000:8080"
+      - "3002:8080"
     restart: unless-stopped
 
 volumes:

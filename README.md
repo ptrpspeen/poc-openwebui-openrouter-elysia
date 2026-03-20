@@ -106,6 +106,10 @@ kubectl port-forward svc/middleware-service 8080:8080
 docker-compose up -d --build
 ```
 
+Default local ports in this repo's compose file:
+- OpenWebUI: `http://localhost:3002`
+- Middleware/Admin: `http://localhost:8081`
+
 ## 🔐 Admin Dashboard
 
 The built-in dashboard is available at `http://localhost:8080`.
