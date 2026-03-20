@@ -169,6 +169,17 @@ function usageKeys(userId: string, period: "daily" | "monthly", now = new Date()
   };
 }
 
+function parseFormulaConfig(value: any) {
+  if (typeof value === "string") {
+    try {
+      return value.trim() ? JSON.parse(value) : {};
+    } catch {
+      return {};
+    }
+  }
+  return value && typeof value === "object" ? value : {};
+}
+
 function describeLimit(policy: any) {
   return {
     limit_type: policy.limit_type,
@@ -176,7 +187,7 @@ function describeLimit(policy: any) {
     token_limit: parseNumber(policy.token_limit, -1),
     cost_limit: parseNumber(policy.cost_limit, -1),
     formula_kind: policy.formula_kind || null,
-    formula_config: policy.formula_config || {},
+    formula_config: parseFormulaConfig(policy.formula_config),
   };
 }
 
@@ -195,16 +206,17 @@ function evaluatePolicyLimit(policy: any, usage: { tokens: number; cost: number 
   const tokenLimit = parseNumber(policy.token_limit, -1);
   const costLimit = parseNumber(policy.cost_limit, -1);
   const formulaKind = policy.formula_kind || "max_ratio";
-  const formulaConfig = typeof policy.formula_config === "string"
-    ? (() => { try { return JSON.parse(policy.formula_config); } catch { return {}; } })()
-    : (policy.formula_config || {});
+  const formulaConfig = parseFormulaConfig(policy.formula_config);
+
+  const tokenRatio = tokenLimit > 0 ? usage.tokens / tokenLimit : 0;
+  const costRatio = costLimit > 0 ? usage.cost / costLimit : 0;
 
   if (limitType === "token") {
     const exceeded = tokenLimit > 0 && usage.tokens >= tokenLimit;
     return {
       allowed: !exceeded,
       reason: exceeded ? `${policy.scope_period} token limit exceeded` : undefined,
-      details: { token_ratio: tokenLimit > 0 ? usage.tokens / tokenLimit : 0 }
+      details: { token_ratio: tokenRatio, remaining_tokens: tokenLimit > 0 ? Math.max(0, tokenLimit - usage.tokens) : null }
     };
   }
 
@@ -213,20 +225,41 @@ function evaluatePolicyLimit(policy: any, usage: { tokens: number; cost: number 
     return {
       allowed: !exceeded,
       reason: exceeded ? `${policy.scope_period} cost limit exceeded` : undefined,
-      details: { cost_ratio: costLimit > 0 ? usage.cost / costLimit : 0 }
+      details: { cost_ratio: costRatio, remaining_cost: costLimit > 0 ? Math.max(0, costLimit - usage.cost) : null }
     };
   }
 
+  const threshold = parseNumber(formulaConfig.threshold, 1);
+
   if (formulaKind === "max_ratio") {
-    const tokenRatio = tokenLimit > 0 ? usage.tokens / tokenLimit : 0;
-    const costRatio = costLimit > 0 ? usage.cost / costLimit : 0;
     const score = Math.max(tokenRatio, costRatio);
-    const threshold = parseNumber(formulaConfig.threshold, 1);
     const exceeded = score >= threshold;
     return {
       allowed: !exceeded,
       reason: exceeded ? `${policy.scope_period} formula limit exceeded` : undefined,
       details: { token_ratio: tokenRatio, cost_ratio: costRatio, score, threshold }
+    };
+  }
+
+  if (formulaKind === "weighted_ratio") {
+    const tokenWeight = parseNumber(formulaConfig.token_weight, 0.5);
+    const costWeight = parseNumber(formulaConfig.cost_weight, 0.5);
+    const weightTotal = tokenWeight + costWeight;
+    const normalizedTokenWeight = weightTotal > 0 ? tokenWeight / weightTotal : 0.5;
+    const normalizedCostWeight = weightTotal > 0 ? costWeight / weightTotal : 0.5;
+    const score = (tokenRatio * normalizedTokenWeight) + (costRatio * normalizedCostWeight);
+    const exceeded = score >= threshold;
+    return {
+      allowed: !exceeded,
+      reason: exceeded ? `${policy.scope_period} formula limit exceeded` : undefined,
+      details: {
+        token_ratio: tokenRatio,
+        cost_ratio: costRatio,
+        score,
+        threshold,
+        token_weight: normalizedTokenWeight,
+        cost_weight: normalizedCostWeight,
+      }
     };
   }
 
@@ -291,6 +324,14 @@ function normalizePolicyInput(input: any) {
     }
     normalized.formula_kind = formulaKind;
     normalized.formula_config = { threshold: 1, ...normalized.formula_config };
+    if (formulaKind === "weighted_ratio") {
+      normalized.formula_config = {
+        threshold: 1,
+        token_weight: 0.5,
+        cost_weight: 0.5,
+        ...normalized.formula_config,
+      };
+    }
   }
 
   return normalized;
@@ -314,7 +355,7 @@ const GROUP_CACHE_TTL_MS = 60_000;
 const POLICY_CACHE_TTL_MS = 60_000;
 const LIMIT_TYPES = new Set(["token", "cost", "formula"]);
 const PERIOD_TYPES = new Set(["daily", "monthly"]);
-const FORMULA_KINDS = new Set(["max_ratio"]);
+const FORMULA_KINDS = new Set(["max_ratio", "weighted_ratio"]);
 
 const userCache = new Map<string, { value: any; expiresAt: number }>();
 const groupCache = new Map<string, { value: string[]; expiresAt: number }>();
@@ -397,6 +438,15 @@ async function resolveEffectivePolicy(user: any, groups: string[]) {
     return effectivePolicyId;
 }
 
+async function getUsageSnapshot(userId: string, period: "daily" | "monthly") {
+  const keys = usageKeys(userId, period);
+  const usageVals = await redis.mget(keys.tokens, keys.cost);
+  return {
+    tokens: parseNumber(usageVals?.[0], 0),
+    cost: parseNumber(usageVals?.[1], 0),
+  };
+}
+
 async function checkAccess(userId: string): Promise<{ allowed: boolean; reason?: string; groups: string[]; policy?: any; usage?: any; details?: any }> {
   const user: any = await getUserCached(userId);
   const groups = await getUserGroups(userId);
@@ -409,12 +459,7 @@ async function checkAccess(userId: string): Promise<{ allowed: boolean; reason?:
   if (!policy) return { allowed: false, reason: `Policy ${activePolicyId} not found`, groups };
 
   const period = (policy.scope_period || "monthly") === "daily" ? "daily" : "monthly";
-  const keys = usageKeys(userId, period);
-  const usageVals = await redis.mget(keys.tokens, keys.cost);
-  const usage = {
-    tokens: parseNumber(usageVals?.[0], 0),
-    cost: parseNumber(usageVals?.[1], 0),
-  };
+  const usage = await getUsageSnapshot(userId, period);
 
   const evaluation = evaluatePolicyLimit(policy, usage);
   return {
@@ -752,12 +797,18 @@ const app = new Elysia()
             const groups = await getUserGroups(user.id);
             const effectivePolicyId = await resolveEffectivePolicy(user, groups);
             const effectivePolicy = await getPolicyCached(effectivePolicyId);
+            const effectivePeriod = (effectivePolicy?.scope_period || "monthly") === "daily" ? "daily" : "monthly";
+            const usageSummary = effectivePolicy ? await getUsageSnapshot(user.id, effectivePeriod) : null;
+            const evaluation = effectivePolicy && usageSummary ? evaluatePolicyLimit(effectivePolicy, usageSummary) : null;
             results.push({
               ...user,
               groups,
               effective_policy_id: effectivePolicyId,
               effective_policy_summary: effectivePolicy ? summarizePolicy(effectivePolicy) : null,
               effective_limit_type: effectivePolicy?.limit_type || null,
+              effective_usage: usageSummary,
+              effective_usage_period: effectivePeriod,
+              effective_usage_details: evaluation?.details || null,
             });
         }
         return results;
@@ -842,6 +893,33 @@ const app = new Elysia()
         );
         policyCache.delete(policy.id);
         return { success: true };
+      })
+      .post("/policies/preview", async ({ body, set }: any) => {
+        let policy;
+        try {
+          policy = normalizePolicyInput({
+            id: body?.policy?.id || "preview",
+            name: body?.policy?.name || "Preview Policy",
+            ...body?.policy,
+          });
+        } catch (e: any) {
+          set.status = 400;
+          return { success: false, error: e?.message || String(e) };
+        }
+
+        const usage = {
+          tokens: parseNumber(body?.usage?.tokens, 0),
+          cost: parseNumber(body?.usage?.cost, 0),
+        };
+        const evaluation = evaluatePolicyLimit(policy, usage);
+        return {
+          success: true,
+          allowed: evaluation.allowed,
+          reason: evaluation.reason || null,
+          policy: describeLimit(policy),
+          usage,
+          details: evaluation.details,
+        };
       })
       .delete("/policies/:id", async ({ params }) => {
         if (params.id === 'default') return { success: false, error: "Cannot delete default policy" };
