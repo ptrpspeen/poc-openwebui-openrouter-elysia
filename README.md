@@ -39,7 +39,7 @@ The system manages configurations differently based on the deployment environmen
 | `OPENROUTER_API_KEY` | Your OpenRouter API Key | Sensitive | Secret |
 | `ADMIN_API_KEY` | Secret key for Dashboard access | Sensitive | Secret |
 | `DATABASE_URL` | Postgres URL for Middleware DB | Config | ConfigMap |
-| `WEBUI_DATABASE_URL` | Postgres URL for OpenWebUI DB | Config | ConfigMap |
+| `WEBUI_DATABASE_URL` | OpenWebUI DB connection (`sqlite:/app/backend/data/webui.db` or Postgres URL) | Config | ConfigMap |
 | `REDIS_URL` | Redis connection URL | Config | ConfigMap |
 | `LOG_MODE` | Log verbosity (`metadata` or `off`) | Config | ConfigMap |
 | `OPENROUTER_HTTP_REFERER` | Site URL for OpenRouter ranking | Metadata | ConfigMap |
@@ -76,10 +76,12 @@ For local development or single-node Docker, use the `.env` file in the root dir
 OPENROUTER_API_KEY=sk-or-v1-xxxx
 ADMIN_API_KEY=admin-secret-key
 DATABASE_URL=postgresql://admin:adminpassword@db:5432/ai_control
-WEBUI_DATABASE_URL=postgresql://admin:adminpassword@db:5432/openwebui
+WEBUI_DATABASE_URL=sqlite:/app/backend/data/webui.db
 REDIS_URL=redis://redis:6379
 LOG_MODE=metadata
 ```
+
+> If your OpenWebUI deployment uses PostgreSQL instead of the default SQLite file, set `WEBUI_DATABASE_URL` to that Postgres connection string instead.
 
 ## 🚦 Deployment
 

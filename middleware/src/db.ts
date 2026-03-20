@@ -1,4 +1,11 @@
 import { Pool } from "pg";
+import { Database } from "bun:sqlite";
+
+type DbAdapter = {
+  get: (text: string, params?: any[]) => Promise<any>;
+  all: (text: string, params?: any[]) => Promise<any[]>;
+  run: (text: string, params?: any[]) => Promise<any>;
+};
 
 const required = ["DATABASE_URL", "WEBUI_DATABASE_URL"] as const;
 const missing = required.filter((k) => !process.env[k] || process.env[k]!.trim() === "");
@@ -10,9 +17,7 @@ const connectionString = process.env.DATABASE_URL as string;
 const webuiConnectionString = process.env.WEBUI_DATABASE_URL as string;
 
 export const pool = new Pool({ connectionString });
-export const webuiPool = new Pool({ connectionString: webuiConnectionString });
 
-// Helper for easier queries
 export const db = {
   query: async (text: string, params?: any[]) => await pool.query(text, params),
   get: async (text: string, params?: any[]) => (await pool.query(text, params)).rows[0],
@@ -20,25 +25,79 @@ export const db = {
   all: async (text: string, params?: any[]) => (await pool.query(text, params)).rows
 };
 
-export const webuiDb = {
-    get: async (text: string, params?: any[]) => (await webuiPool.query(text, params)).rows[0],
-    all: async (text: string, params?: any[]) => (await webuiPool.query(text, params)).rows,
-    run: async (text: string, params?: any[]) => await webuiPool.query(text, params)
-};
+function normalizeSqlitePath(input: string) {
+  if (input.startsWith("sqlite://")) return input.slice("sqlite://".length);
+  if (input.startsWith("sqlite:")) return input.slice("sqlite:".length);
+  return input;
+}
+
+function createSqliteAdapter(filename: string): DbAdapter {
+  const sqlite = new Database(filename, { readonly: true, create: false });
+
+  const prepare = (text: string, params?: any[]) => {
+    const statement = sqlite.query(text.replace(/\$(\d+)/g, "?$1"));
+    return statement;
+  };
+
+  return {
+    get: async (text: string, params?: any[]) => {
+      const stmt = prepare(text, params);
+      return stmt.get(...(params || []));
+    },
+    all: async (text: string, params?: any[]) => {
+      const stmt = prepare(text, params);
+      return stmt.all(...(params || []));
+    },
+    run: async (text: string, params?: any[]) => {
+      const stmt = prepare(text, params);
+      return stmt.run(...(params || []));
+    }
+  };
+}
+
+function createPostgresAdapter(connectionString: string): DbAdapter & { pool: Pool } {
+  const pool = new Pool({ connectionString });
+  return {
+    pool,
+    get: async (text: string, params?: any[]) => (await pool.query(text, params)).rows[0],
+    all: async (text: string, params?: any[]) => (await pool.query(text, params)).rows,
+    run: async (text: string, params?: any[]) => await pool.query(text, params)
+  };
+}
+
+function createWebuiDbAdapter(connectionString: string): DbAdapter {
+  if (
+    connectionString.startsWith("postgres://") ||
+    connectionString.startsWith("postgresql://")
+  ) {
+    return createPostgresAdapter(connectionString);
+  }
+
+  return createSqliteAdapter(normalizeSqlitePath(connectionString));
+}
+
+export const webuiDb = createWebuiDbAdapter(webuiConnectionString);
 
 export async function initDb() {
   console.log("🐘 Initializing PostgreSQL Database...");
-  
+
   let retries = 5;
+  let lastError: unknown = null;
   while (retries > 0) {
     try {
       await db.run("SELECT 1");
+      lastError = null;
       break;
     } catch (err) {
+      lastError = err;
       console.log(`⏳ Waiting for PostgreSQL to be ready... (${retries} retries left)`);
       retries -= 1;
       await new Promise(r => setTimeout(r, 3000));
     }
+  }
+
+  if (lastError) {
+    throw lastError;
   }
 
   await db.run(`
@@ -105,14 +164,13 @@ export async function initDb() {
   await db.run(`CREATE INDEX IF NOT EXISTS idx_request_logs_user_started ON request_logs(user_id, started_at DESC)`);
   await db.run(`CREATE INDEX IF NOT EXISTS idx_request_logs_model_started ON request_logs(model, started_at DESC)`);
 
-  // Insert default policy
-  const defaultPolicy = await db.get("SELECT * FROM policies WHERE id = $1", ['default']);
+  const defaultPolicy = await db.get("SELECT * FROM policies WHERE id = $1", ["default"]);
   if (!defaultPolicy) {
     await db.run(`
       INSERT INTO policies (id, name, daily_token_limit, monthly_token_limit, allowed_models)
       VALUES ('default', 'Default Student Policy', 50000, 1000000, '*')
     `);
   }
-  
+
   console.log("✅ PostgreSQL Schema verified");
 }

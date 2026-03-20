@@ -79,6 +79,10 @@
             </header>
 
             <div class="flex-1 overflow-y-auto p-8 z-10">
+                <div x-show="Object.keys(errors).length" class="mb-6 rounded-2xl border border-amber-300/40 bg-amber-100/70 dark:bg-amber-500/10 px-5 py-4 text-sm text-amber-900 dark:text-amber-200">
+                    <div class="font-black uppercase tracking-widest text-[10px] mb-2">Partial load warnings</div>
+                    <template x-for="(msg, key) in errors" :key="key"><div><span class="font-bold" x-text="key"></span>: <span x-text="msg"></span></div></template>
+                </div>
                 <!-- Stats Grid -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
                     <template x-for="stat in statsCards" :key="stat.label">
@@ -165,7 +169,7 @@
                             <div class="lg:col-span-8">
                                 <div class="glass rounded-2xl overflow-hidden shadow-lg">
                                     <table class="w-full text-left"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] text-slate-400 font-black uppercase tracking-widest"><tr><th class="px-8 py-4">OpenWebUI Group</th><th class="px-8 py-4">Middleware Policy</th><th class="px-8 py-4 text-center">Rank</th><th class="px-8 py-4 text-right">Delete</th></tr></thead>
-                                        <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40"><template x-for="gp in groupPolicies" :key="gp.group_name"><tr><td class="px-8 py-5 font-bold text-slate-700 dark:text-white" x-text="gp.group_name"></td><td class="px-8 py-5"><span class="bg-luxury-500/10 text-luxury-600 dark:text-luxury-400 px-3 py-1 rounded-lg text-[10px] font-black uppercase" x-text="gp.policy_id"></span></td><td class="px-8 py-5 text-center" x-text="gp.priority"></td><td class="px-8 py-5 text-right"><button @click="deleteGroupMapping(gp.group_name)" class="text-rose-500/50 hover:text-rose-500"><i class="fa-solid fa-trash-can"></i></button></td></tr></template></tbody>
+                                        <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40"><template x-for="gp in groupRows" :key="gp.group_name"><tr><td class="px-8 py-5 font-bold text-slate-700 dark:text-white" x-text="gp.group_name"></td><td class="px-8 py-5"><span class="bg-luxury-500/10 text-luxury-600 dark:text-luxury-400 px-3 py-1 rounded-lg text-[10px] font-black uppercase" x-text="gp.policy_id || 'unmapped'"></span></td><td class="px-8 py-5 text-center" x-text="gp.priority ?? '-' "></td><td class="px-8 py-5 text-right"><button @click="deleteGroupMapping(gp.group_name)" class="text-rose-500/50 hover:text-rose-500" :disabled="!gp.policy_id" :class="!gp.policy_id ? 'opacity-30 cursor-not-allowed' : ''"><i class="fa-solid fa-trash-can"></i></button></td></tr></template><tr x-show="groupRows.length === 0"><td colspan="4" class="px-8 py-8 text-center text-slate-400">No OpenWebUI groups found yet.</td></tr></tbody>
                                     </table>
                                 </div>
                             </div>
@@ -193,7 +197,7 @@
                             <div class="lg:col-span-8">
                                 <div class="glass rounded-2xl overflow-hidden shadow-lg">
                                     <table class="w-full text-left"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] text-slate-400 font-black uppercase tracking-widest"><tr><th class="px-8 py-4">Policy Name</th><th class="px-8 py-4">Limits (D/M)</th><th class="px-8 py-4 text-right">Action</th></tr></thead>
-                                        <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40 font-mono text-[11px]"><template x-for="p in policies" :key="p.id"><tr><td class="px-8 py-5 font-bold text-slate-700 dark:text-white" x-text="p.name"></td><td class="px-8 py-5" x-text="formatNumber(p.daily_token_limit) + ' / ' + formatNumber(p.monthly_token_limit)"></td><td class="px-8 py-5 text-right"><button @click="deletePolicy(p.id)" class="text-rose-500/50 hover:text-rose-500" x-show="p.id !== 'default'"><i class="fa-solid fa-trash-can"></i></button></td></tr></template></tbody>
+                                        <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40 font-mono text-[11px]"><template x-for="p in policies" :key="p.id"><tr><td class="px-8 py-5 font-bold text-slate-700 dark:text-white" x-text="p.name"></td><td class="px-8 py-5" x-text="formatNumber(p.daily_token_limit) + ' / ' + formatNumber(p.monthly_token_limit)"></td><td class="px-8 py-5 text-right space-x-3"><button @click="editPolicy(p)" class="text-sky-500/70 hover:text-sky-500"><i class="fa-solid fa-pen-to-square"></i></button><button @click="deletePolicy(p.id)" class="text-rose-500/50 hover:text-rose-500" x-show="p.id !== 'default'"><i class="fa-solid fa-trash-can"></i></button></td></tr></template></tbody>
                                     </table>
                                 </div>
                             </div>
@@ -286,6 +290,7 @@
                 systemLogs: [],
                 configView: {},
                 configDraft: {},
+                errors: {},
                 menuItems: [{ id: 'overview', label: 'Command Center', icon: 'fa-solid fa-gauge-high' }, { id: 'users', label: 'User Hub', icon: 'fa-solid fa-user-gear' }, { id: 'groups', label: 'Group Logic', icon: 'fa-solid fa-sitemap' }, { id: 'policies', label: 'Quota Policies', icon: 'fa-solid fa-shield-halved' }, { id: 'system', label: 'System Health', icon: 'fa-solid fa-heart-pulse' }, { id: 'logs', label: 'Usage Logs', icon: 'fa-solid fa-receipt' }],
                 stats: { total_users: 0, total_policies: 0, total_tokens: 0, total_cost: 0, total_requests: 0, last_24h: { tokens: 0, cost: 0, requests: 0, avg_latency_ms: 0, p95_latency_ms: 0, max_latency_ms: 0 }, top_models: [], top_users: [] },
                 performance: { summary: {}, recent: [] },
@@ -301,44 +306,82 @@
                         { label: 'P95 Latency (24h)', value: Math.round(this.stats.last_24h.p95_latency_ms || 0) + ' ms', icon: 'fa-solid fa-stopwatch', context: 'Prompt to response' }
                     ]; 
                 },
+                get groupRows() {
+                    const mapped = new Map(this.groupPolicies.map(gp => [gp.group_name, gp]));
+                    const names = [...new Set([
+                        ...this.webuiGroups.map(g => g.name),
+                        ...this.groupPolicies.map(gp => gp.group_name)
+                    ])].sort((a, b) => a.localeCompare(b));
+                    return names.map(name => mapped.get(name) || { group_name: name, policy_id: '', priority: null });
+                },
                 async init() { if (this.adminKey) { await this.refreshAll(); setInterval(() => this.refreshAll(), 15000); } },
                 toggleTheme() { this.darkMode = !this.darkMode; localStorage.setItem('theme', this.darkMode ? 'dark' : 'light'); },
                 saveKey() { this.adminKey = this.keyInput; localStorage.setItem('adminKey', this.adminKey); this.init(); },
                 logout() { this.adminKey = ''; localStorage.removeItem('adminKey'); },
                 async refreshAll() {
                     this.loading = true;
+                    this.errors = {};
                     try {
                         const headers = { 'x-admin-key': this.adminKey };
                         const perfParams = new URLSearchParams();
                         Object.entries(this.performanceFilter).forEach(([k, v]) => { if (v) perfParams.set(k, String(v)); });
                         const perfUrl = '/admin/performance' + (perfParams.toString() ? `?${perfParams.toString()}` : '');
 
-                        const [u, p, log, gps, wgs, s, perf, health, configRes, systemLogsRes] = await Promise.all([
-                            fetch('/admin/users', { headers }).then(r => r.json()),
-                            fetch('/admin/policies', { headers }).then(r => r.json()),
-                            fetch('/admin/usage', { headers }).then(r => r.json()),
-                            fetch('/admin/group-policies', { headers }).then(r => r.json()),
-                            fetch('/admin/openwebui-groups', { headers }).then(r => r.json()),
-                            fetch('/admin/stats', { headers }).then(r => r.json()),
-                            fetch(perfUrl, { headers }).then(r => r.json()),
-                            fetch('/admin/health', { headers }).then(r => r.json()),
-                            fetch('/admin/config', { headers }).then(r => r.json()),
-                            fetch('/admin/system-logs', { headers }).then(r => r.json())
-                        ]);
-                        this.users = u; this.policies = p; this.usage = log; this.groupPolicies = gps; this.webuiGroups = wgs; this.stats = s;
-                        this.performance = perf;
-                        this.systemHealth = health;
-                        this.configView = configRes.config || {};
-                        this.configDraft = { ...(configRes.config || {}) };
-                        this.systemLogs = systemLogsRes.logs || [];
+                        const endpoints = {
+                            users: '/admin/users',
+                            policies: '/admin/policies',
+                            usage: '/admin/usage',
+                            groupPolicies: '/admin/group-policies',
+                            webuiGroups: '/admin/openwebui-groups',
+                            stats: '/admin/stats',
+                            performance: perfUrl,
+                            health: '/admin/health',
+                            config: '/admin/config',
+                            systemLogs: '/admin/system-logs'
+                        };
+
+                        const results = await Promise.all(Object.entries(endpoints).map(async ([key, url]) => {
+                            try {
+                                const response = await fetch(url, { headers });
+                                if (!response.ok) {
+                                    const text = await response.text();
+                                    throw new Error(text || `${key} failed with ${response.status}`);
+                                }
+                                return { key, value: await response.json(), error: null };
+                            } catch (error) {
+                                return { key, value: null, error };
+                            }
+                        }));
+
+                        for (const result of results) {
+                            if (result.error) {
+                                this.errors[result.key] = String(result.error?.message || result.error);
+                                console.error(result.error);
+                                continue;
+                            }
+                            const { key, value } = result;
+                            if (key === 'users') this.users = value;
+                            else if (key === 'policies') this.policies = value;
+                            else if (key === 'usage') this.usage = value;
+                            else if (key === 'groupPolicies') this.groupPolicies = value;
+                            else if (key === 'webuiGroups') this.webuiGroups = value;
+                            else if (key === 'stats') this.stats = value;
+                            else if (key === 'performance') this.performance = value;
+                            else if (key === 'health') this.systemHealth = value;
+                            else if (key === 'config') {
+                                this.configView = value.config || {};
+                                this.configDraft = { ...(value.config || {}) };
+                            } else if (key === 'systemLogs') this.systemLogs = value.logs || [];
+                        }
                     } catch (e) { console.error(e); } finally { this.loading = false; }
                 },
                 async toggleUserStatus(user) { await fetch(`/admin/users/${user.id}`, { method: 'PATCH', headers: { 'x-admin-key': this.adminKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: !user.is_active }) }); await this.refreshAll(); },
                 async updateUserPolicy(user) { await fetch(`/admin/users/${user.id}`, { method: 'PATCH', headers: { 'x-admin-key': this.adminKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ policy_id: user.policy_id }) }); await this.refreshAll(); },
+                editPolicy(policy) { this.newPolicy = { id: policy.id, name: policy.name, daily_token_limit: Number(policy.daily_token_limit), monthly_token_limit: Number(policy.monthly_token_limit), allowed_models: policy.allowed_models || '*' }; },
                 async createPolicy() { await fetch('/admin/policies', { method: 'POST', headers: { 'x-admin-key': this.adminKey, 'Content-Type': 'application/json' }, body: JSON.stringify(this.newPolicy) }); this.newPolicy = { id: '', name: '', daily_token_limit: 50000, monthly_token_limit: 1000000, allowed_models: '*' }; await this.refreshAll(); },
                 async deletePolicy(id) { if (confirm('Delete?')) await fetch(`/admin/policies/${id}`, { method: 'DELETE', headers: { 'x-admin-key': this.adminKey } }); await this.refreshAll(); },
                 async saveGroupPolicy() { await fetch('/admin/group-policies', { method: 'POST', headers: { 'x-admin-key': this.adminKey, 'Content-Type': 'application/json' }, body: JSON.stringify(this.newGroupPolicy) }); this.newGroupPolicy = { group_name: '', policy_id: '', priority: 0 }; await this.refreshAll(); },
-                async deleteGroupMapping(name) { await fetch(`/admin/group-policies/${name}`, { method: 'DELETE', headers: { 'x-admin-key': this.adminKey } }); await this.refreshAll(); },
+                async deleteGroupMapping(name) { if (!name) return; await fetch(`/admin/group-policies/${encodeURIComponent(name)}`, { method: 'DELETE', headers: { 'x-admin-key': this.adminKey } }); await this.refreshAll(); },
                 async saveConfig() {
                     await fetch('/admin/config', {
                         method: 'POST',

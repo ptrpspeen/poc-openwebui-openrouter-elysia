@@ -33,6 +33,8 @@ services:
       - OPENROUTER_HTTP_REFERER=${OPENROUTER_HTTP_REFERER}
       - OPENROUTER_X_TITLE=${OPENROUTER_X_TITLE}
       - LOG_MODE=${LOG_MODE}
+    volumes:
+      - openwebui_data:/app/backend/data:ro
     ports:
       - "8080:8080"
     restart: unless-stopped
@@ -47,7 +49,6 @@ services:
       - OPENAI_API_KEY=dummy_key
       - WEBUI_TELEMETRY=false
       - ENABLE_FORWARD_USER_INFO_HEADERS=true
-      - DATABASE_URL=postgresql://admin:adminpassword@db:5432/openwebui
     volumes:
       - openwebui_data:/app/backend/data
     ports:

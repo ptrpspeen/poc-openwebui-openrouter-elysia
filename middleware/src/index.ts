@@ -601,8 +601,17 @@ const app = new Elysia()
       })
       .get("/policies", () => db.all("SELECT * FROM policies ORDER BY created_at DESC"))
       .get("/usage", () => db.all("SELECT * FROM usage_logs ORDER BY ts DESC LIMIT 100"))
-      .get("/group-policies", () => db.all("SELECT * FROM group_policies ORDER BY priority DESC"))
-      .get("/openwebui-groups", () => webuiDb.all('SELECT name FROM "group"'))
+      .get("/group-policies", () => db.all("SELECT * FROM group_policies ORDER BY priority DESC, group_name ASC"))
+      .get("/openwebui-groups", async ({ set }) => {
+        try {
+          const rows = await webuiDb.all('SELECT name FROM "group" ORDER BY name ASC');
+          return rows;
+        } catch (e: any) {
+          writeSystemLog("error", "Failed to load OpenWebUI groups", { error: e?.message || String(e) });
+          set.status = 500;
+          return { error: "Failed to load OpenWebUI groups" };
+        }
+      })
       .post("/group-policies", async ({ body }: any) => {
         const { group_name, policy_id, priority } = body;
         await db.run(
