@@ -43,9 +43,7 @@ export async function initDb() {
     }
   }
 
-  if (lastError) {
-    throw lastError;
-  }
+  if (lastError) throw lastError;
 
   await db.run(`
     CREATE TABLE IF NOT EXISTS policies (
@@ -56,6 +54,31 @@ export async function initDb() {
       allowed_models TEXT DEFAULT '*',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
+  `);
+
+  await db.run(`ALTER TABLE policies ADD COLUMN IF NOT EXISTS limit_type TEXT NOT NULL DEFAULT 'token'`);
+  await db.run(`ALTER TABLE policies ADD COLUMN IF NOT EXISTS scope_period TEXT NOT NULL DEFAULT 'monthly'`);
+  await db.run(`ALTER TABLE policies ADD COLUMN IF NOT EXISTS token_limit BIGINT DEFAULT -1`);
+  await db.run(`ALTER TABLE policies ADD COLUMN IF NOT EXISTS cost_limit NUMERIC(15, 6) DEFAULT -1`);
+  await db.run(`ALTER TABLE policies ADD COLUMN IF NOT EXISTS formula_kind TEXT`);
+  await db.run(`ALTER TABLE policies ADD COLUMN IF NOT EXISTS formula_config JSONB DEFAULT '{}'::jsonb`);
+
+  await db.run(`
+    UPDATE policies
+    SET token_limit = CASE
+      WHEN token_limit IS NULL OR token_limit = -1 THEN COALESCE(NULLIF(monthly_token_limit, -1), NULLIF(daily_token_limit, -1), -1)
+      ELSE token_limit
+    END,
+    scope_period = CASE
+      WHEN scope_period IS NULL OR scope_period = '' THEN
+        CASE WHEN COALESCE(monthly_token_limit, -1) > 0 THEN 'monthly' ELSE 'daily' END
+      ELSE scope_period
+    END,
+    limit_type = CASE
+      WHEN limit_type IS NULL OR limit_type = '' THEN 'token'
+      ELSE limit_type
+    END,
+    formula_config = COALESCE(formula_config, '{}'::jsonb)
   `);
 
   await db.run(`
@@ -114,8 +137,16 @@ export async function initDb() {
   const defaultPolicy = await db.get("SELECT * FROM policies WHERE id = $1", ["default"]);
   if (!defaultPolicy) {
     await db.run(`
-      INSERT INTO policies (id, name, daily_token_limit, monthly_token_limit, allowed_models)
-      VALUES ('default', 'Default Student Policy', 50000, 1000000, '*')
+      INSERT INTO policies (
+        id, name, daily_token_limit, monthly_token_limit,
+        limit_type, scope_period, token_limit, cost_limit,
+        formula_kind, formula_config, allowed_models
+      )
+      VALUES (
+        'default', 'Default Student Policy', 50000, 1000000,
+        'token', 'monthly', 1000000, -1,
+        NULL, '{}'::jsonb, '*'
+      )
     `);
   }
 

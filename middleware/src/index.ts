@@ -155,6 +155,147 @@ function getBangkokDateParts(now = new Date()) {
   };
 }
 
+function parseNumber(value: any, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function usageKeys(userId: string, period: "daily" | "monthly", now = new Date()) {
+  const { dayKey, monthKey } = getBangkokDateParts(now);
+  const suffix = period === "daily" ? dayKey : monthKey;
+  return {
+    tokens: `usage:user:${userId}:${period}:${suffix}:tokens`,
+    cost: `usage:user:${userId}:${period}:${suffix}:cost`,
+  };
+}
+
+function describeLimit(policy: any) {
+  return {
+    limit_type: policy.limit_type,
+    scope_period: policy.scope_period,
+    token_limit: parseNumber(policy.token_limit, -1),
+    cost_limit: parseNumber(policy.cost_limit, -1),
+    formula_kind: policy.formula_kind || null,
+    formula_config: policy.formula_config || {},
+  };
+}
+
+function summarizePolicy(policy: any) {
+  const type = policy.limit_type || "token";
+  const period = policy.scope_period || "monthly";
+  const tokenLimit = parseNumber(policy.token_limit, -1);
+  const costLimit = parseNumber(policy.cost_limit, -1);
+  if (type === "token") return `${period} token limit ${tokenLimit > 0 ? tokenLimit.toLocaleString() : "unlimited"}`;
+  if (type === "cost") return `${period} cost limit ${costLimit > 0 ? `$${costLimit.toFixed(4)}` : "unlimited"}`;
+  return `${period} formula ${policy.formula_kind || "max_ratio"}`;
+}
+
+function evaluatePolicyLimit(policy: any, usage: { tokens: number; cost: number }) {
+  const limitType = policy.limit_type || "token";
+  const tokenLimit = parseNumber(policy.token_limit, -1);
+  const costLimit = parseNumber(policy.cost_limit, -1);
+  const formulaKind = policy.formula_kind || "max_ratio";
+  const formulaConfig = typeof policy.formula_config === "string"
+    ? (() => { try { return JSON.parse(policy.formula_config); } catch { return {}; } })()
+    : (policy.formula_config || {});
+
+  if (limitType === "token") {
+    const exceeded = tokenLimit > 0 && usage.tokens >= tokenLimit;
+    return {
+      allowed: !exceeded,
+      reason: exceeded ? `${policy.scope_period} token limit exceeded` : undefined,
+      details: { token_ratio: tokenLimit > 0 ? usage.tokens / tokenLimit : 0 }
+    };
+  }
+
+  if (limitType === "cost") {
+    const exceeded = costLimit > 0 && usage.cost >= costLimit;
+    return {
+      allowed: !exceeded,
+      reason: exceeded ? `${policy.scope_period} cost limit exceeded` : undefined,
+      details: { cost_ratio: costLimit > 0 ? usage.cost / costLimit : 0 }
+    };
+  }
+
+  if (formulaKind === "max_ratio") {
+    const tokenRatio = tokenLimit > 0 ? usage.tokens / tokenLimit : 0;
+    const costRatio = costLimit > 0 ? usage.cost / costLimit : 0;
+    const score = Math.max(tokenRatio, costRatio);
+    const threshold = parseNumber(formulaConfig.threshold, 1);
+    const exceeded = score >= threshold;
+    return {
+      allowed: !exceeded,
+      reason: exceeded ? `${policy.scope_period} formula limit exceeded` : undefined,
+      details: { token_ratio: tokenRatio, cost_ratio: costRatio, score, threshold }
+    };
+  }
+
+  return {
+    allowed: true,
+    details: { warning: `Unknown formula kind ${formulaKind}` }
+  };
+}
+
+function normalizePolicyInput(input: any) {
+  const limit_type = String(input?.limit_type || "token").trim();
+  const scope_period = String(input?.scope_period || "monthly").trim();
+  const formula_kind_raw = input?.formula_kind == null || input?.formula_kind === "" ? null : String(input.formula_kind).trim();
+  let formula_config = input?.formula_config ?? {};
+  if (typeof formula_config === "string") {
+    try {
+      formula_config = formula_config.trim() ? JSON.parse(formula_config) : {};
+    } catch {
+      throw new Error("formula_config must be valid JSON");
+    }
+  }
+  if (typeof formula_config !== "object" || Array.isArray(formula_config) || formula_config === null) {
+    throw new Error("formula_config must be an object");
+  }
+
+  const normalized = {
+    id: String(input?.id || "").trim(),
+    name: String(input?.name || "").trim(),
+    limit_type,
+    scope_period,
+    token_limit: parseNumber(input?.token_limit, -1),
+    cost_limit: parseNumber(input?.cost_limit, -1),
+    formula_kind: formula_kind_raw,
+    formula_config,
+    allowed_models: String(input?.allowed_models || "*").trim() || "*",
+  };
+
+  if (!normalized.id) throw new Error("Policy id is required");
+  if (!normalized.name) throw new Error("Policy name is required");
+  if (!LIMIT_TYPES.has(normalized.limit_type)) throw new Error("Invalid limit_type");
+  if (!PERIOD_TYPES.has(normalized.scope_period)) throw new Error("Invalid scope_period");
+
+  if (normalized.limit_type === "token") {
+    if (normalized.token_limit <= 0) throw new Error("token_limit must be greater than 0 for token policies");
+    normalized.cost_limit = -1;
+    normalized.formula_kind = null;
+    normalized.formula_config = {};
+  }
+
+  if (normalized.limit_type === "cost") {
+    if (normalized.cost_limit <= 0) throw new Error("cost_limit must be greater than 0 for cost policies");
+    normalized.token_limit = -1;
+    normalized.formula_kind = null;
+    normalized.formula_config = {};
+  }
+
+  if (normalized.limit_type === "formula") {
+    const formulaKind = normalized.formula_kind || "max_ratio";
+    if (!FORMULA_KINDS.has(formulaKind)) throw new Error("Invalid formula_kind");
+    if (normalized.token_limit <= 0 && normalized.cost_limit <= 0) {
+      throw new Error("formula policies need token_limit or cost_limit");
+    }
+    normalized.formula_kind = formulaKind;
+    normalized.formula_config = { threshold: 1, ...normalized.formula_config };
+  }
+
+  return normalized;
+}
+
 function getUserFromJWT(token: string): string | null {
   try {
     const parts = token.split(".");
@@ -171,6 +312,9 @@ function getUserFromJWT(token: string): string | null {
 const USER_CACHE_TTL_MS = 60_000;
 const GROUP_CACHE_TTL_MS = 60_000;
 const POLICY_CACHE_TTL_MS = 60_000;
+const LIMIT_TYPES = new Set(["token", "cost", "formula"]);
+const PERIOD_TYPES = new Set(["daily", "monthly"]);
+const FORMULA_KINDS = new Set(["max_ratio"]);
 
 const userCache = new Map<string, { value: any; expiresAt: number }>();
 const groupCache = new Map<string, { value: string[]; expiresAt: number }>();
@@ -253,7 +397,7 @@ async function resolveEffectivePolicy(user: any, groups: string[]) {
     return effectivePolicyId;
 }
 
-async function checkAccess(userId: string): Promise<{ allowed: boolean; reason?: string; groups: string[] }> {
+async function checkAccess(userId: string): Promise<{ allowed: boolean; reason?: string; groups: string[]; policy?: any; usage?: any; details?: any }> {
   const user: any = await getUserCached(userId);
   const groups = await getUserGroups(userId);
 
@@ -261,44 +405,47 @@ async function checkAccess(userId: string): Promise<{ allowed: boolean; reason?:
 
   const activePolicyId = await resolveEffectivePolicy(user, groups);
   const policy: any = await getPolicyCached(activePolicyId);
-  
+
   if (!policy) return { allowed: false, reason: `Policy ${activePolicyId} not found`, groups };
 
-  const { dayKey, monthKey } = getBangkokDateParts();
-  const dailyKey = `usage:user:${userId}:daily:${dayKey}`;
-  const monthlyKey = `usage:user:${userId}:monthly:${monthKey}`;
+  const period = (policy.scope_period || "monthly") === "daily" ? "daily" : "monthly";
+  const keys = usageKeys(userId, period);
+  const usageVals = await redis.mget(keys.tokens, keys.cost);
+  const usage = {
+    tokens: parseNumber(usageVals?.[0], 0),
+    cost: parseNumber(usageVals?.[1], 0),
+  };
 
-  const usageVals = await redis.mget(dailyKey, monthlyKey);
-  const dailyUsage = parseInt(usageVals?.[0] || "0");
-  const monthlyUsage = parseInt(usageVals?.[1] || "0");
-
-  if (policy.daily_token_limit > 0 && dailyUsage >= parseInt(policy.daily_token_limit)) {
-    return { allowed: false, reason: "Daily token limit exceeded", groups };
-  }
-
-  if (policy.monthly_token_limit > 0 && monthlyUsage >= parseInt(policy.monthly_token_limit)) {
-    return { allowed: false, reason: "Monthly token limit exceeded", groups };
-  }
-
-  return { allowed: true, groups };
+  const evaluation = evaluatePolicyLimit(policy, usage);
+  return {
+    allowed: evaluation.allowed,
+    reason: evaluation.reason,
+    groups,
+    policy: describeLimit(policy),
+    usage,
+    details: evaluation.details,
+  };
 }
 
 async function processUsage(userId: string | null, model: string, usage: any) {
   if (!userId) return;
-  const { dayKey, monthKey } = getBangkokDateParts();
-  const dailyKey = `usage:user:${userId}:daily:${dayKey}`;
-  const monthlyKey = `usage:user:${userId}:monthly:${monthKey}`;
-  const total = usage.total_tokens || (usage.prompt_tokens + usage.completion_tokens);
-  const cost = usage.cost || usage.total_cost || 0;
-  
+  const dailyKeys = usageKeys(userId, "daily");
+  const monthlyKeys = usageKeys(userId, "monthly");
+  const total = parseNumber(usage.total_tokens, parseNumber(usage.prompt_tokens, 0) + parseNumber(usage.completion_tokens, 0));
+  const cost = parseNumber(usage.cost ?? usage.total_cost ?? 0, 0);
+
   await Promise.all([
-    redis.incrby(dailyKey, total),
-    redis.incrby(monthlyKey, total),
-    redis.expire(dailyKey, 3456000),
-    redis.expire(monthlyKey, 3456000),
+    redis.incrby(dailyKeys.tokens, total),
+    redis.incrby(monthlyKeys.tokens, total),
+    redis.incrbyfloat(dailyKeys.cost, cost),
+    redis.incrbyfloat(monthlyKeys.cost, cost),
+    redis.expire(dailyKeys.tokens, 3456000),
+    redis.expire(monthlyKeys.tokens, 3456000),
+    redis.expire(dailyKeys.cost, 3456000),
+    redis.expire(monthlyKeys.cost, 3456000),
     redis.lpush("usage_queue", JSON.stringify({
-      user_id: userId, model, prompt_tokens: usage.prompt_tokens,
-      completion_tokens: usage.completion_tokens, total_tokens: total, 
+      user_id: userId, model, prompt_tokens: parseNumber(usage.prompt_tokens, 0),
+      completion_tokens: parseNumber(usage.completion_tokens, 0), total_tokens: total,
       total_cost: cost, ts: new Date().toISOString()
     }))
   ]);
@@ -512,7 +659,16 @@ const app = new Elysia()
       modelName = body.model || "unknown";
       if (userId) {
         const access = await checkAccess(userId);
-        if (!access.allowed) { set.status = 403; return { error: access.reason }; }
+        if (!access.allowed) {
+          set.status = 403;
+          return {
+            error: access.reason || "Quota exceeded",
+            policy: access.policy,
+            usage: access.usage,
+            details: access.details,
+            groups: access.groups,
+          };
+        }
         body.user = userId;
       }
     }
@@ -595,7 +751,14 @@ const app = new Elysia()
         for (const user of users) {
             const groups = await getUserGroups(user.id);
             const effectivePolicyId = await resolveEffectivePolicy(user, groups);
-            results.push({ ...user, groups, effective_policy_id: effectivePolicyId });
+            const effectivePolicy = await getPolicyCached(effectivePolicyId);
+            results.push({
+              ...user,
+              groups,
+              effective_policy_id: effectivePolicyId,
+              effective_policy_summary: effectivePolicy ? summarizePolicy(effectivePolicy) : null,
+              effective_limit_type: effectivePolicy?.limit_type || null,
+            });
         }
         return results;
       })
@@ -635,13 +798,49 @@ const app = new Elysia()
         userCache.delete(params.id);
         return { success: true };
       })
-      .post("/policies", async ({ body }: any) => {
-        const { id, name, daily_token_limit, monthly_token_limit, allowed_models } = body;
+      .post("/policies", async ({ body, set }: any) => {
+        let policy;
+        try {
+          policy = normalizePolicyInput(body);
+        } catch (e: any) {
+          set.status = 400;
+          return { success: false, error: e?.message || String(e) };
+        }
+
+        const legacyDaily = policy.limit_type === "token" && policy.scope_period === "daily" ? policy.token_limit : -1;
+        const legacyMonthly = policy.limit_type === "token" && policy.scope_period === "monthly" ? policy.token_limit : -1;
+
         await db.run(
-          "INSERT INTO policies (id, name, daily_token_limit, monthly_token_limit, allowed_models) VALUES ($1, $2, $3, $4, $5) ON CONFLICT(id) DO UPDATE SET name=excluded.name, daily_token_limit=excluded.daily_token_limit, monthly_token_limit=excluded.monthly_token_limit, allowed_models=excluded.allowed_models",
-          [id, name, daily_token_limit, monthly_token_limit, allowed_models]
+          `INSERT INTO policies (
+            id, name, daily_token_limit, monthly_token_limit, allowed_models,
+            limit_type, scope_period, token_limit, cost_limit, formula_kind, formula_config
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+          ON CONFLICT(id) DO UPDATE SET
+            name=excluded.name,
+            daily_token_limit=excluded.daily_token_limit,
+            monthly_token_limit=excluded.monthly_token_limit,
+            allowed_models=excluded.allowed_models,
+            limit_type=excluded.limit_type,
+            scope_period=excluded.scope_period,
+            token_limit=excluded.token_limit,
+            cost_limit=excluded.cost_limit,
+            formula_kind=excluded.formula_kind,
+            formula_config=excluded.formula_config`,
+          [
+            policy.id,
+            policy.name,
+            legacyDaily,
+            legacyMonthly,
+            policy.allowed_models,
+            policy.limit_type,
+            policy.scope_period,
+            policy.token_limit,
+            policy.cost_limit,
+            policy.formula_kind,
+            JSON.stringify(policy.formula_config || {}),
+          ]
         );
-        policyCache.delete(id);
+        policyCache.delete(policy.id);
         return { success: true };
       })
       .delete("/policies/:id", async ({ params }) => {
