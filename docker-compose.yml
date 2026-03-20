@@ -33,8 +33,6 @@ services:
       - OPENROUTER_HTTP_REFERER=${OPENROUTER_HTTP_REFERER}
       - OPENROUTER_X_TITLE=${OPENROUTER_X_TITLE}
       - LOG_MODE=${LOG_MODE}
-    volumes:
-      - openwebui_data:/app/backend/data:ro
     ports:
       - "8080:8080"
     restart: unless-stopped
@@ -51,6 +49,15 @@ services:
       - ENABLE_FORWARD_USER_INFO_HEADERS=true
     volumes:
       - openwebui_data:/app/backend/data
+    ports:
+      - "3000:8080"
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  postgres_data:
+  openwebui_data:
+ckend/data
     ports:
       - "3000:8080"
     restart: unless-stopped

@@ -1,11 +1,4 @@
 import { Pool } from "pg";
-import { Database } from "bun:sqlite";
-
-type DbAdapter = {
-  get: (text: string, params?: any[]) => Promise<any>;
-  all: (text: string, params?: any[]) => Promise<any[]>;
-  run: (text: string, params?: any[]) => Promise<any>;
-};
 
 const required = ["DATABASE_URL", "WEBUI_DATABASE_URL"] as const;
 const missing = required.filter((k) => !process.env[k] || process.env[k]!.trim() === "");
@@ -17,6 +10,7 @@ const connectionString = process.env.DATABASE_URL as string;
 const webuiConnectionString = process.env.WEBUI_DATABASE_URL as string;
 
 export const pool = new Pool({ connectionString });
+export const webuiPool = new Pool({ connectionString: webuiConnectionString });
 
 export const db = {
   query: async (text: string, params?: any[]) => await pool.query(text, params),
@@ -25,58 +19,11 @@ export const db = {
   all: async (text: string, params?: any[]) => (await pool.query(text, params)).rows
 };
 
-function normalizeSqlitePath(input: string) {
-  if (input.startsWith("sqlite://")) return input.slice("sqlite://".length);
-  if (input.startsWith("sqlite:")) return input.slice("sqlite:".length);
-  return input;
-}
-
-function createSqliteAdapter(filename: string): DbAdapter {
-  const sqlite = new Database(filename, { readonly: true, create: false });
-
-  const prepare = (text: string, params?: any[]) => {
-    const statement = sqlite.query(text.replace(/\$(\d+)/g, "?$1"));
-    return statement;
-  };
-
-  return {
-    get: async (text: string, params?: any[]) => {
-      const stmt = prepare(text, params);
-      return stmt.get(...(params || []));
-    },
-    all: async (text: string, params?: any[]) => {
-      const stmt = prepare(text, params);
-      return stmt.all(...(params || []));
-    },
-    run: async (text: string, params?: any[]) => {
-      const stmt = prepare(text, params);
-      return stmt.run(...(params || []));
-    }
-  };
-}
-
-function createPostgresAdapter(connectionString: string): DbAdapter & { pool: Pool } {
-  const pool = new Pool({ connectionString });
-  return {
-    pool,
-    get: async (text: string, params?: any[]) => (await pool.query(text, params)).rows[0],
-    all: async (text: string, params?: any[]) => (await pool.query(text, params)).rows,
-    run: async (text: string, params?: any[]) => await pool.query(text, params)
-  };
-}
-
-function createWebuiDbAdapter(connectionString: string): DbAdapter {
-  if (
-    connectionString.startsWith("postgres://") ||
-    connectionString.startsWith("postgresql://")
-  ) {
-    return createPostgresAdapter(connectionString);
-  }
-
-  return createSqliteAdapter(normalizeSqlitePath(connectionString));
-}
-
-export const webuiDb = createWebuiDbAdapter(webuiConnectionString);
+export const webuiDb = {
+  get: async (text: string, params?: any[]) => (await webuiPool.query(text, params)).rows[0],
+  all: async (text: string, params?: any[]) => (await webuiPool.query(text, params)).rows,
+  run: async (text: string, params?: any[]) => await webuiPool.query(text, params)
+};
 
 export async function initDb() {
   console.log("🐘 Initializing PostgreSQL Database...");
