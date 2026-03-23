@@ -184,9 +184,10 @@ function parseFormulaConfig(value: any) {
 function describeLimit(policy: any) {
   return {
     limit_type: policy.limit_type,
-    scope_period: policy.scope_period,
-    token_limit: parseNumber(policy.token_limit, -1),
-    cost_limit: parseNumber(policy.cost_limit, -1),
+    daily_token_limit: parseNumber(policy.daily_token_limit, 0),
+    monthly_token_limit: parseNumber(policy.monthly_token_limit, 0),
+    daily_cost_limit: parseNumber(policy.daily_cost_limit, 0),
+    monthly_cost_limit: parseNumber(policy.monthly_cost_limit, 0),
     formula_kind: policy.formula_kind || null,
     formula_config: parseFormulaConfig(policy.formula_config),
   };
@@ -194,52 +195,39 @@ function describeLimit(policy: any) {
 
 function summarizePolicy(policy: any) {
   const type = policy.limit_type || "token";
-  const period = policy.scope_period || "monthly";
-  const tokenLimit = parseNumber(policy.token_limit, -1);
-  const costLimit = parseNumber(policy.cost_limit, -1);
-  if (type === "token") return `${period} token limit ${tokenLimit > 0 ? tokenLimit.toLocaleString() : "unlimited"}`;
-  if (type === "cost") return `${period} cost limit ${costLimit > 0 ? `$${costLimit.toFixed(4)}` : "unlimited"}`;
-  return `${period} formula ${policy.formula_kind || "max_ratio"}`;
+  const dailyToken = parseNumber(policy.daily_token_limit, 0);
+  const monthlyToken = parseNumber(policy.monthly_token_limit, 0);
+  const dailyCost = parseNumber(policy.daily_cost_limit, 0);
+  const monthlyCost = parseNumber(policy.monthly_cost_limit, 0);
+  if (type === "token") return `token d:${dailyToken > 0 ? dailyToken.toLocaleString() : '∞'} / m:${monthlyToken > 0 ? monthlyToken.toLocaleString() : '∞'}`;
+  if (type === "cost") return `cost d:${dailyCost > 0 ? `$${dailyCost.toFixed(4)}` : '∞'} / m:${monthlyCost > 0 ? `$${monthlyCost.toFixed(4)}` : '∞'}`;
+  return `formula ${policy.formula_kind || "max_ratio"} d:${dailyToken > 0 ? dailyToken.toLocaleString() : '∞'}|${dailyCost > 0 ? `$${dailyCost.toFixed(2)}` : '∞'} m:${monthlyToken > 0 ? monthlyToken.toLocaleString() : '∞'}|${monthlyCost > 0 ? `$${monthlyCost.toFixed(2)}` : '∞'}`;
 }
 
-function evaluatePolicyLimit(policy: any, usage: { tokens: number; cost: number }) {
+function evaluateWindow(policy: any, usage: { tokens: number; cost: number }, window: "daily" | "monthly") {
   const limitType = policy.limit_type || "token";
-  const tokenLimit = parseNumber(policy.token_limit, -1);
-  const costLimit = parseNumber(policy.cost_limit, -1);
+  const tokenLimit = parseNumber(policy[`${window}_token_limit`], 0);
+  const costLimit = parseNumber(policy[`${window}_cost_limit`], 0);
   const formulaKind = policy.formula_kind || "max_ratio";
   const formulaConfig = parseFormulaConfig(policy.formula_config);
-
   const tokenRatio = tokenLimit > 0 ? usage.tokens / tokenLimit : 0;
   const costRatio = costLimit > 0 ? usage.cost / costLimit : 0;
 
   if (limitType === "token") {
     const exceeded = tokenLimit > 0 && usage.tokens >= tokenLimit;
-    return {
-      allowed: !exceeded,
-      reason: exceeded ? `${policy.scope_period} token limit exceeded` : undefined,
-      details: { token_ratio: tokenRatio, remaining_tokens: tokenLimit > 0 ? Math.max(0, tokenLimit - usage.tokens) : null }
-    };
+    return { exceeded, reason: exceeded ? `${window} token limit exceeded` : undefined, details: { token_ratio: tokenRatio, remaining_tokens: tokenLimit > 0 ? Math.max(0, tokenLimit - usage.tokens) : null } };
   }
 
   if (limitType === "cost") {
     const exceeded = costLimit > 0 && usage.cost >= costLimit;
-    return {
-      allowed: !exceeded,
-      reason: exceeded ? `${policy.scope_period} cost limit exceeded` : undefined,
-      details: { cost_ratio: costRatio, remaining_cost: costLimit > 0 ? Math.max(0, costLimit - usage.cost) : null }
-    };
+    return { exceeded, reason: exceeded ? `${window} cost limit exceeded` : undefined, details: { cost_ratio: costRatio, remaining_cost: costLimit > 0 ? Math.max(0, costLimit - usage.cost) : null } };
   }
 
   const threshold = parseNumber(formulaConfig.threshold, 1);
-
   if (formulaKind === "max_ratio") {
     const score = Math.max(tokenRatio, costRatio);
     const exceeded = score >= threshold;
-    return {
-      allowed: !exceeded,
-      reason: exceeded ? `${policy.scope_period} formula limit exceeded` : undefined,
-      details: { token_ratio: tokenRatio, cost_ratio: costRatio, score, threshold }
-    };
+    return { exceeded, reason: exceeded ? `${window} formula limit exceeded` : undefined, details: { token_ratio: tokenRatio, cost_ratio: costRatio, score, threshold } };
   }
 
   if (formulaKind === "weighted_ratio") {
@@ -250,24 +238,18 @@ function evaluatePolicyLimit(policy: any, usage: { tokens: number; cost: number 
     const normalizedCostWeight = weightTotal > 0 ? costWeight / weightTotal : 0.5;
     const score = (tokenRatio * normalizedTokenWeight) + (costRatio * normalizedCostWeight);
     const exceeded = score >= threshold;
-    return {
-      allowed: !exceeded,
-      reason: exceeded ? `${policy.scope_period} formula limit exceeded` : undefined,
-      details: {
-        token_ratio: tokenRatio,
-        cost_ratio: costRatio,
-        score,
-        threshold,
-        token_weight: normalizedTokenWeight,
-        cost_weight: normalizedCostWeight,
-      }
-    };
+    return { exceeded, reason: exceeded ? `${window} formula limit exceeded` : undefined, details: { token_ratio: tokenRatio, cost_ratio: costRatio, score, threshold, token_weight: normalizedTokenWeight, cost_weight: normalizedCostWeight } };
   }
 
-  return {
-    allowed: true,
-    details: { warning: `Unknown formula kind ${formulaKind}` }
-  };
+  return { exceeded: false, details: { warning: `Unknown formula kind ${formulaKind}` } };
+}
+
+function evaluatePolicyLimit(policy: any, usage: { daily: { tokens: number; cost: number }, monthly: { tokens: number; cost: number } }) {
+  const daily = evaluateWindow(policy, usage.daily, "daily");
+  if (daily.exceeded) return { allowed: false, reason: daily.reason, details: { daily: daily.details, monthly: null } };
+  const monthly = evaluateWindow(policy, usage.monthly, "monthly");
+  if (monthly.exceeded) return { allowed: false, reason: monthly.reason, details: { daily: daily.details, monthly: monthly.details } };
+  return { allowed: true, details: { daily: daily.details, monthly: monthly.details } };
 }
 
 function classifyUpstreamError(status: number, payload: any) {
@@ -313,8 +295,12 @@ function normalizePolicyInput(input: any) {
     name: String(input?.name || "").trim(),
     limit_type,
     scope_period,
-    token_limit: parseNumber(input?.token_limit, -1),
-    cost_limit: parseNumber(input?.cost_limit, -1),
+    daily_token_limit: Math.max(0, parseNumber(input?.daily_token_limit, 0)),
+    monthly_token_limit: Math.max(0, parseNumber(input?.monthly_token_limit, 0)),
+    daily_cost_limit: Math.max(0, parseNumber(input?.daily_cost_limit, 0)),
+    monthly_cost_limit: Math.max(0, parseNumber(input?.monthly_cost_limit, 0)),
+    token_limit: Math.max(0, parseNumber(input?.token_limit, 0)),
+    cost_limit: Math.max(0, parseNumber(input?.cost_limit, 0)),
     formula_kind: formula_kind_raw,
     formula_config,
     allowed_models: String(input?.allowed_models || "*").trim() || "*",
@@ -326,15 +312,21 @@ function normalizePolicyInput(input: any) {
   if (!PERIOD_TYPES.has(normalized.scope_period)) throw new Error("Invalid scope_period");
 
   if (normalized.limit_type === "token") {
-    if (normalized.token_limit <= 0) throw new Error("token_limit must be greater than 0 for token policies");
-    normalized.cost_limit = -1;
+    if (normalized.daily_token_limit <= 0 && normalized.monthly_token_limit <= 0) throw new Error("Set daily_token_limit or monthly_token_limit (0 = unlimited for one window, not both)");
+    normalized.token_limit = Math.max(normalized.daily_token_limit, normalized.monthly_token_limit, 0);
+    normalized.daily_cost_limit = 0;
+    normalized.monthly_cost_limit = 0;
+    normalized.cost_limit = 0;
     normalized.formula_kind = null;
     normalized.formula_config = {};
   }
 
   if (normalized.limit_type === "cost") {
-    if (normalized.cost_limit <= 0) throw new Error("cost_limit must be greater than 0 for cost policies");
-    normalized.token_limit = -1;
+    if (normalized.daily_cost_limit <= 0 && normalized.monthly_cost_limit <= 0) throw new Error("Set daily_cost_limit or monthly_cost_limit (0 = unlimited for one window, not both)");
+    normalized.cost_limit = Math.max(normalized.daily_cost_limit, normalized.monthly_cost_limit, 0);
+    normalized.daily_token_limit = 0;
+    normalized.monthly_token_limit = 0;
+    normalized.token_limit = 0;
     normalized.formula_kind = null;
     normalized.formula_config = {};
   }
@@ -342,18 +334,15 @@ function normalizePolicyInput(input: any) {
   if (normalized.limit_type === "formula") {
     const formulaKind = normalized.formula_kind || "max_ratio";
     if (!FORMULA_KINDS.has(formulaKind)) throw new Error("Invalid formula_kind");
-    if (normalized.token_limit <= 0 && normalized.cost_limit <= 0) {
-      throw new Error("formula policies need token_limit or cost_limit");
-    }
+    const hasDaily = normalized.daily_token_limit > 0 || normalized.daily_cost_limit > 0;
+    const hasMonthly = normalized.monthly_token_limit > 0 || normalized.monthly_cost_limit > 0;
+    if (!hasDaily && !hasMonthly) throw new Error("Formula policies need at least one daily or monthly threshold");
+    normalized.token_limit = Math.max(normalized.daily_token_limit, normalized.monthly_token_limit, 0);
+    normalized.cost_limit = Math.max(normalized.daily_cost_limit, normalized.monthly_cost_limit, 0);
     normalized.formula_kind = formulaKind;
     normalized.formula_config = { threshold: 1, ...normalized.formula_config };
     if (formulaKind === "weighted_ratio") {
-      normalized.formula_config = {
-        threshold: 1,
-        token_weight: 0.5,
-        cost_weight: 0.5,
-        ...normalized.formula_config,
-      };
+      normalized.formula_config = { threshold: 1, token_weight: 0.5, cost_weight: 0.5, ...normalized.formula_config };
     }
   }
 
@@ -470,6 +459,13 @@ async function getUsageSnapshot(userId: string, period: "daily" | "monthly") {
   };
 }
 
+async function getUsageSnapshotAll(userId: string) {
+  return {
+    daily: await getUsageSnapshot(userId, "daily"),
+    monthly: await getUsageSnapshot(userId, "monthly"),
+  };
+}
+
 async function checkAccess(userId: string): Promise<{ allowed: boolean; reason?: string; groups: string[]; policy?: any; usage?: any; details?: any }> {
   const user: any = await getUserCached(userId);
   const groups = await getUserGroups(userId);
@@ -481,8 +477,7 @@ async function checkAccess(userId: string): Promise<{ allowed: boolean; reason?:
 
   if (!policy) return { allowed: false, reason: `Policy ${activePolicyId} not found`, groups };
 
-  const period = (policy.scope_period || "monthly") === "daily" ? "daily" : "monthly";
-  const usage = await getUsageSnapshot(userId, period);
+  const usage = await getUsageSnapshotAll(userId);
 
   const evaluation = evaluatePolicyLimit(policy, usage);
   return {
@@ -832,8 +827,7 @@ const app = new Elysia()
             const groups = await getUserGroups(user.id);
             const effectivePolicyId = await resolveEffectivePolicy(user, groups);
             const effectivePolicy = await getPolicyCached(effectivePolicyId);
-            const effectivePeriod = (effectivePolicy?.scope_period || "monthly") === "daily" ? "daily" : "monthly";
-            const usageSummary = effectivePolicy ? await getUsageSnapshot(user.id, effectivePeriod) : null;
+            const usageSummary = effectivePolicy ? await getUsageSnapshotAll(user.id) : null;
             const evaluation = effectivePolicy && usageSummary ? evaluatePolicyLimit(effectivePolicy, usageSummary) : null;
             results.push({
               ...user,
@@ -842,7 +836,6 @@ const app = new Elysia()
               effective_policy_summary: effectivePolicy ? summarizePolicy(effectivePolicy) : null,
               effective_limit_type: effectivePolicy?.limit_type || null,
               effective_usage: usageSummary,
-              effective_usage_period: effectivePeriod,
               effective_usage_details: evaluation?.details || null,
             });
         }
@@ -893,14 +886,15 @@ const app = new Elysia()
           return { success: false, error: e?.message || String(e) };
         }
 
-        const legacyDaily = policy.limit_type === "token" && policy.scope_period === "daily" ? policy.token_limit : -1;
-        const legacyMonthly = policy.limit_type === "token" && policy.scope_period === "monthly" ? policy.token_limit : -1;
+        const legacyDaily = policy.daily_token_limit;
+        const legacyMonthly = policy.monthly_token_limit;
 
         await db.run(
           `INSERT INTO policies (
             id, name, daily_token_limit, monthly_token_limit, allowed_models,
-            limit_type, scope_period, token_limit, cost_limit, formula_kind, formula_config
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+            limit_type, scope_period, token_limit, cost_limit, formula_kind, formula_config,
+            daily_cost_limit, monthly_cost_limit
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13)
           ON CONFLICT(id) DO UPDATE SET
             name=excluded.name,
             daily_token_limit=excluded.daily_token_limit,
@@ -911,7 +905,9 @@ const app = new Elysia()
             token_limit=excluded.token_limit,
             cost_limit=excluded.cost_limit,
             formula_kind=excluded.formula_kind,
-            formula_config=excluded.formula_config`,
+            formula_config=excluded.formula_config,
+            daily_cost_limit=excluded.daily_cost_limit,
+            monthly_cost_limit=excluded.monthly_cost_limit`,
           [
             policy.id,
             policy.name,
@@ -924,6 +920,8 @@ const app = new Elysia()
             policy.cost_limit,
             policy.formula_kind,
             JSON.stringify(policy.formula_config || {}),
+            policy.daily_cost_limit,
+            policy.monthly_cost_limit,
           ]
         );
         policyCache.delete(policy.id);
@@ -943,8 +941,14 @@ const app = new Elysia()
         }
 
         const usage = {
-          tokens: parseNumber(body?.usage?.tokens, 0),
-          cost: parseNumber(body?.usage?.cost, 0),
+          daily: {
+            tokens: parseNumber(body?.usage?.daily?.tokens ?? body?.usage?.tokens, 0),
+            cost: parseNumber(body?.usage?.daily?.cost ?? body?.usage?.cost, 0),
+          },
+          monthly: {
+            tokens: parseNumber(body?.usage?.monthly?.tokens ?? body?.usage?.tokens, 0),
+            cost: parseNumber(body?.usage?.monthly?.cost ?? body?.usage?.cost, 0),
+          },
         };
         const evaluation = evaluatePolicyLimit(policy, usage);
         return {

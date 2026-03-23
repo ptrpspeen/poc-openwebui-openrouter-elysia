@@ -62,22 +62,28 @@ export async function initDb() {
   await db.run(`ALTER TABLE policies ADD COLUMN IF NOT EXISTS cost_limit NUMERIC(15, 6) DEFAULT -1`);
   await db.run(`ALTER TABLE policies ADD COLUMN IF NOT EXISTS formula_kind TEXT`);
   await db.run(`ALTER TABLE policies ADD COLUMN IF NOT EXISTS formula_config JSONB DEFAULT '{}'::jsonb`);
+  await db.run(`ALTER TABLE policies ADD COLUMN IF NOT EXISTS daily_cost_limit NUMERIC(15, 6) DEFAULT 0`);
+  await db.run(`ALTER TABLE policies ADD COLUMN IF NOT EXISTS monthly_cost_limit NUMERIC(15, 6) DEFAULT 0`);
 
   await db.run(`
     UPDATE policies
     SET token_limit = CASE
-      WHEN token_limit IS NULL OR token_limit = -1 THEN COALESCE(NULLIF(monthly_token_limit, -1), NULLIF(daily_token_limit, -1), -1)
+      WHEN token_limit IS NULL OR token_limit = -1 THEN GREATEST(COALESCE(monthly_token_limit, 0), COALESCE(daily_token_limit, 0), 0)
       ELSE token_limit
     END,
     scope_period = CASE
-      WHEN scope_period IS NULL OR scope_period = '' THEN
-        CASE WHEN COALESCE(monthly_token_limit, -1) > 0 THEN 'monthly' ELSE 'daily' END
+      WHEN scope_period IS NULL OR scope_period = '' THEN 'monthly'
       ELSE scope_period
     END,
     limit_type = CASE
       WHEN limit_type IS NULL OR limit_type = '' THEN 'token'
       ELSE limit_type
     END,
+    daily_token_limit = CASE WHEN daily_token_limit < 0 THEN 0 ELSE COALESCE(daily_token_limit, 0) END,
+    monthly_token_limit = CASE WHEN monthly_token_limit < 0 THEN 0 ELSE COALESCE(monthly_token_limit, 0) END,
+    cost_limit = CASE WHEN cost_limit < 0 THEN 0 ELSE COALESCE(cost_limit, 0) END,
+    daily_cost_limit = CASE WHEN daily_cost_limit < 0 THEN 0 ELSE COALESCE(daily_cost_limit, 0) END,
+    monthly_cost_limit = CASE WHEN monthly_cost_limit < 0 THEN 0 ELSE COALESCE(monthly_cost_limit, 0) END,
     formula_config = COALESCE(formula_config, '{}'::jsonb)
   `);
 
@@ -144,7 +150,7 @@ export async function initDb() {
       )
       VALUES (
         'default', 'Default Student Policy', 50000, 1000000,
-        'token', 'monthly', 1000000, -1,
+        'token', 'monthly', 1000000, 0,
         NULL, '{}'::jsonb, '*'
       )
     `);
