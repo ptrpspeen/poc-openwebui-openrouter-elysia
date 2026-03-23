@@ -270,6 +270,28 @@ function evaluatePolicyLimit(policy: any, usage: { tokens: number; cost: number 
   };
 }
 
+function classifyUpstreamError(status: number, payload: any) {
+  const rawMessage = payload?.error?.message || payload?.message || payload?.error || "Upstream request failed";
+  const message = String(rawMessage || "Upstream request failed");
+  const lower = message.toLowerCase();
+
+  if (status === 401 || status === 403) {
+    if (lower.includes("user not found") || lower.includes("invalid api key") || lower.includes("incorrect api key") || lower.includes("unauthorized")) {
+      return {
+        error: "Upstream API key is invalid or not linked to a valid account",
+        code: "UPSTREAM_INVALID_API_KEY",
+        upstream: { status, message },
+      };
+    }
+  }
+
+  return {
+    error: message,
+    code: "UPSTREAM_ERROR",
+    upstream: { status, message },
+  };
+}
+
 function normalizePolicyInput(input: any) {
   const limit_type = String(input?.limit_type || "token").trim();
   const scope_period = String(input?.scope_period || "monthly").trim();
@@ -732,11 +754,18 @@ const app = new Elysia()
       body: body ? JSON.stringify(body) : (request.method === "GET" ? null : await request.arrayBuffer()),
     });
 
+    let upstreamJsonError: any = null;
     if (!upstreamResponse.ok) {
+      try {
+        upstreamJsonError = await upstreamResponse.clone().json();
+      } catch {
+        upstreamJsonError = null;
+      }
       writeSystemLog("warn", "Upstream returned non-2xx", {
         status: upstreamResponse.status,
         path,
         userId,
+        upstreamMessage: upstreamJsonError?.error?.message || upstreamJsonError?.message || null,
       });
     }
 
@@ -766,8 +795,7 @@ const app = new Elysia()
       });
       return new Response(stream, { status: upstreamResponse.status, headers: responseHeaders });
     } else {
-      const respData = await upstreamResponse.json();
-      if (respData.usage) await processUsage(userId, respData.model || modelName, respData.usage);
+      const respData = upstreamJsonError ?? await upstreamResponse.json();
       const completedAt = new Date();
       logRequestPerformance({
         userId,
@@ -780,6 +808,13 @@ const app = new Elysia()
         completedAt,
         totalCost: Number(respData?.usage?.cost || respData?.usage?.total_cost || 0),
       });
+
+      if (!upstreamResponse.ok) {
+        const mappedError = classifyUpstreamError(upstreamResponse.status, respData);
+        return new Response(JSON.stringify(mappedError), { status: upstreamResponse.status, headers: responseHeaders });
+      }
+
+      if (respData.usage) await processUsage(userId, respData.model || modelName, respData.usage);
       return new Response(JSON.stringify(respData), { status: upstreamResponse.status, headers: responseHeaders });
     }
   })
