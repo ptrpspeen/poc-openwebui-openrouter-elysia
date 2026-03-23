@@ -546,16 +546,20 @@
                     if (type === 'cost') return `remaining ${this.remainingValue(policy[`${period}_cost_limit`], usage.cost, 'cost')}`;
                     return `remaining ${this.remainingValue(policy[`${period}_token_limit`], usage.tokens)} tok / ${this.remainingValue(policy[`${period}_cost_limit`], usage.cost, 'cost')}`;
                 },
-                formatRemainingFromZero(policy) {
-                    const type = policy.limit_type || 'token';
-                    if (type === 'token') return `D:${this.remainingValue(policy.daily_token_limit, 0)} / M:${this.remainingValue(policy.monthly_token_limit, 0)} tok`;
-                    if (type === 'cost') return `D:${this.remainingValue(policy.daily_cost_limit, 0, 'cost')} / M:${this.remainingValue(policy.monthly_cost_limit, 0, 'cost')}`;
-                    return `D:${this.remainingValue(policy.daily_token_limit, 0)} tok + ${this.remainingValue(policy.daily_cost_limit, 0, 'cost')} / M:${this.remainingValue(policy.monthly_token_limit, 0)} tok + ${this.remainingValue(policy.monthly_cost_limit, 0, 'cost')}`;
-                },
                 formatPolicyLimit(policy) {
                     const type = policy.limit_type || 'token';
                     if (type === 'token') return `D:${this.formatLimitValue(policy.daily_token_limit)} / M:${this.formatLimitValue(policy.monthly_token_limit)} tokens`;
                     if (type === 'cost') return `D:${this.formatLimitValue(policy.daily_cost_limit, 'cost')} / M:${this.formatLimitValue(policy.monthly_cost_limit, 'cost')}`;
+                    return `D:${this.formatLimitValue(policy.daily_token_limit)} tok + ${this.formatLimitValue(policy.daily_cost_limit, 'cost')} / M:${this.formatLimitValue(policy.monthly_token_limit)} tok + ${this.formatLimitValue(policy.monthly_cost_limit, 'cost')} (${this.formulaDetails(policy)})`;
+                },
+                formatDate(d) { return new Date(d).toLocaleDateString(); },
+                formatDateTimeShort(d) { return new Date(d).toLocaleTimeString(); }
+            }
+        }
+    </script>
+</body>
+</html>
+alue(policy.daily_cost_limit, 'cost')} / M:${this.formatLimitValue(policy.monthly_cost_limit, 'cost')}`;
                     return `D:${this.formatLimitValue(policy.daily_token_limit)} tok + ${this.formatLimitValue(policy.daily_cost_limit, 'cost')} / M:${this.formatLimitValue(policy.monthly_token_limit)} tok + ${this.formatLimitValue(policy.monthly_cost_limit, 'cost')} (${this.formulaDetails(policy)})`;
                 },
                 formatDate(d) { return new Date(d).toLocaleDateString(); },
