@@ -559,13 +559,3 @@
     </script>
 </body>
 </html>
-alue(policy.daily_cost_limit, 'cost')} / M:${this.formatLimitValue(policy.monthly_cost_limit, 'cost')}`;
-                    return `D:${this.formatLimitValue(policy.daily_token_limit)} tok + ${this.formatLimitValue(policy.daily_cost_limit, 'cost')} / M:${this.formatLimitValue(policy.monthly_token_limit)} tok + ${this.formatLimitValue(policy.monthly_cost_limit, 'cost')} (${this.formulaDetails(policy)})`;
-                },
-                formatDate(d) { return new Date(d).toLocaleDateString(); },
-                formatDateTimeShort(d) { return new Date(d).toLocaleTimeString(); }
-            }
-        }
-    </script>
-</body>
-</html>
