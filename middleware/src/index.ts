@@ -120,6 +120,7 @@ const HOP_BY_HOP_HEADERS = new Set([
 const STRIP_HEADERS = new Set([
   "cookie", "authorization", "x-forwarded-for", "x-real-ip",
   "x-forwarded-proto", "x-forwarded-host", "accept-encoding", "host", "content-length",
+  "x-openwebui-user-email", "x-openwebui-user-id",
 ]);
 
 function cleanHeaders(headers: Headers): Record<string, string> {
@@ -714,7 +715,6 @@ const app = new Elysia()
             groups: access.groups,
           };
         }
-        body.user = userId;
       }
     }
 
