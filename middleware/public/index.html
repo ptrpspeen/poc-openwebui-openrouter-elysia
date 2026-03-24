@@ -252,10 +252,74 @@
                             </div>
                             <div class="lg:col-span-8">
                                 <div class="glass rounded-2xl overflow-hidden shadow-lg">
-                                    <table class="w-full text-left"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] text-slate-400 font-black uppercase tracking-widest"><tr><th class="px-8 py-4">Policy Name</th><th class="px-8 py-4">Type</th><th class="px-8 py-4">Limit</th><th class="px-8 py-4">Remaining Preview</th><th class="px-8 py-4 text-right">Action</th></tr></thead>
-                                        <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40 font-mono text-[11px]"><template x-for="p in policies" :key="p.id"><tr><td class="px-8 py-5 font-bold text-slate-700 dark:text-white" x-text="p.name"></td><td class="px-8 py-5" x-text="formatPolicyType(p)"></td><td class="px-8 py-5" x-text="formatPolicyLimit(p)"></td><td class="px-8 py-5 text-[10px] text-slate-500 dark:text-slate-300" x-text="formatRemainingFromZero(p)"></td><td class="px-8 py-5 text-right space-x-3"><button @click="editPolicy(p)" class="text-sky-500/70 hover:text-sky-500"><i class="fa-solid fa-pen-to-square"></i></button><button @click="deletePolicy(p.id)" class="text-rose-500/50 hover:text-rose-500" x-show="p.id !== 'default'"><i class="fa-solid fa-trash-can"></i></button></td></tr></template></tbody>
+                                    <table class="w-full text-left"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] text-slate-400 font-black uppercase tracking-widest"><tr><th class="px-8 py-4">Policy Name</th><th class="px-8 py-4">Type</th><th class="px-8 py-4">Limit</th><th class="px-8 py-4 text-right">Action</th></tr></thead>
+                                        <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40 font-mono text-[11px]"><template x-for="p in policies" :key="p.id"><tr><td class="px-8 py-5 font-bold text-slate-700 dark:text-white" x-text="p.name"></td><td class="px-8 py-5" x-text="formatPolicyType(p)"></td><td class="px-8 py-5" x-text="formatPolicyLimit(p)"></td><td class="px-8 py-5 text-right space-x-3"><button @click="editPolicy(p)" class="text-sky-500/70 hover:text-sky-500"><i class="fa-solid fa-pen-to-square"></i></button><button @click="deletePolicy(p.id)" class="text-rose-500/50 hover:text-rose-500" x-show="p.id !== 'default'"><i class="fa-solid fa-trash-can"></i></button></td></tr></template></tbody>
                                     </table>
                                 </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- REPORTS -->
+                    <section x-show="view === 'reports'" x-transition class="space-y-8">
+                        <div class="glass p-6 rounded-2xl shadow-xl space-y-4">
+                            <div class="flex flex-col md:flex-row md:items-end gap-4">
+                                <div>
+                                    <label class="text-[10px] uppercase text-slate-400 font-bold">Range</label>
+                                    <select x-model="reportFilter.range" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
+                                        <option value="24h">24 hours</option>
+                                        <option value="7d">7 days</option>
+                                        <option value="30d">30 days</option>
+                                        <option value="90d">90 days</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] uppercase text-slate-400 font-bold">Limit</label>
+                                    <input type="number" x-model.number="reportFilter.limit" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
+                                </div>
+                                <div>
+                                    <button @click="refreshAll" class="luxury-gradient px-4 py-2 rounded-lg text-[10px] font-black uppercase text-white">Refresh Reports</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div class="glass p-5 rounded-2xl"><div class="text-slate-400 text-xs">Requests</div><div class="font-black text-2xl" x-text="formatNumber(reports.summary.summary?.total_requests || 0)"></div></div>
+                            <div class="glass p-5 rounded-2xl"><div class="text-slate-400 text-xs">Active Users</div><div class="font-black text-2xl" x-text="formatNumber(reports.summary.summary?.active_users || 0)"></div></div>
+                            <div class="glass p-5 rounded-2xl"><div class="text-slate-400 text-xs">Tokens</div><div class="font-black text-2xl" x-text="formatNumber(reports.summary.summary?.total_tokens || 0)"></div></div>
+                            <div class="glass p-5 rounded-2xl"><div class="text-slate-400 text-xs">Cost</div><div class="font-black text-2xl" x-text="'$' + Number(reports.summary.summary?.total_cost || 0).toFixed(4)"></div></div>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <div class="glass rounded-2xl overflow-hidden shadow-xl">
+                                <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800/60"><h3 class="text-sm font-black uppercase tracking-widest">Top Users</h3></div>
+                                <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] uppercase text-slate-400"><tr><th class="px-4 py-3">User</th><th class="px-4 py-3 text-right">Req</th><th class="px-4 py-3 text-right">Tokens</th><th class="px-4 py-3 text-right">Cost</th></tr></thead><tbody class="divide-y divide-slate-200 dark:divide-slate-800/40"><template x-for="row in reports.summary.top_users" :key="row.user_id"><tr><td class="px-4 py-3 font-bold" x-text="row.user_id"></td><td class="px-4 py-3 text-right" x-text="row.requests"></td><td class="px-4 py-3 text-right" x-text="formatNumber(row.tokens)"></td><td class="px-4 py-3 text-right" x-text="'$' + Number(row.cost || 0).toFixed(4)"></td></tr></template></tbody></table></div>
+                            </div>
+                            <div class="glass rounded-2xl overflow-hidden shadow-xl">
+                                <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800/60"><h3 class="text-sm font-black uppercase tracking-widest">Top Models</h3></div>
+                                <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] uppercase text-slate-400"><tr><th class="px-4 py-3">Model</th><th class="px-4 py-3 text-right">Req</th><th class="px-4 py-3 text-right">Tokens</th><th class="px-4 py-3 text-right">Cost</th></tr></thead><tbody class="divide-y divide-slate-200 dark:divide-slate-800/40"><template x-for="row in reports.summary.top_models" :key="row.model"><tr><td class="px-4 py-3 font-bold" x-text="row.model"></td><td class="px-4 py-3 text-right" x-text="row.requests"></td><td class="px-4 py-3 text-right" x-text="formatNumber(row.tokens)"></td><td class="px-4 py-3 text-right" x-text="'$' + Number(row.cost || 0).toFixed(4)"></td></tr></template></tbody></table></div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <div class="glass rounded-2xl overflow-hidden shadow-xl">
+                                <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800/60"><h3 class="text-sm font-black uppercase tracking-widest">Users Report</h3></div>
+                                <div class="overflow-x-auto max-h-[340px]"><table class="w-full text-left text-sm"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] uppercase text-slate-400"><tr><th class="px-4 py-3">User</th><th class="px-4 py-3">Groups</th><th class="px-4 py-3 text-right">Req</th><th class="px-4 py-3 text-right">Cost</th></tr></thead><tbody class="divide-y divide-slate-200 dark:divide-slate-800/40"><template x-for="row in reports.users.rows" :key="row.user_id"><tr><td class="px-4 py-3 font-bold" x-text="row.user_id"></td><td class="px-4 py-3 text-xs" x-text="(row.groups || []).join(', ') || '-' "></td><td class="px-4 py-3 text-right" x-text="row.requests"></td><td class="px-4 py-3 text-right" x-text="'$' + Number(row.cost || 0).toFixed(4)"></td></tr></template></tbody></table></div>
+                            </div>
+                            <div class="glass rounded-2xl overflow-hidden shadow-xl">
+                                <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800/60"><h3 class="text-sm font-black uppercase tracking-widest">Groups Report</h3></div>
+                                <div class="overflow-x-auto max-h-[340px]"><table class="w-full text-left text-sm"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] uppercase text-slate-400"><tr><th class="px-4 py-3">Group</th><th class="px-4 py-3 text-right">Users</th><th class="px-4 py-3 text-right">Req</th><th class="px-4 py-3 text-right">Cost</th></tr></thead><tbody class="divide-y divide-slate-200 dark:divide-slate-800/40"><template x-for="row in reports.groups.rows" :key="row.group_name"><tr><td class="px-4 py-3 font-bold" x-text="row.group_name"></td><td class="px-4 py-3 text-right" x-text="row.active_users"></td><td class="px-4 py-3 text-right" x-text="row.requests"></td><td class="px-4 py-3 text-right" x-text="'$' + Number(row.cost || 0).toFixed(4)"></td></tr></template></tbody></table></div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <div class="glass rounded-2xl overflow-hidden shadow-xl">
+                                <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800/60"><h3 class="text-sm font-black uppercase tracking-widest">Cost by Day</h3></div>
+                                <div class="overflow-x-auto max-h-[320px]"><table class="w-full text-left text-sm"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] uppercase text-slate-400"><tr><th class="px-4 py-3">Day</th><th class="px-4 py-3 text-right">Req</th><th class="px-4 py-3 text-right">Tokens</th><th class="px-4 py-3 text-right">Cost</th></tr></thead><tbody class="divide-y divide-slate-200 dark:divide-slate-800/40"><template x-for="row in reports.costs.by_day" :key="row.day"><tr><td class="px-4 py-3 font-bold" x-text="formatDate(row.day)"></td><td class="px-4 py-3 text-right" x-text="row.requests"></td><td class="px-4 py-3 text-right" x-text="formatNumber(row.tokens)"></td><td class="px-4 py-3 text-right" x-text="'$' + Number(row.cost || 0).toFixed(4)"></td></tr></template></tbody></table></div>
+                            </div>
+                            <div class="glass rounded-2xl overflow-hidden shadow-xl">
+                                <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800/60"><h3 class="text-sm font-black uppercase tracking-widest">Quota Events</h3></div>
+                                <div class="overflow-x-auto max-h-[320px]"><table class="w-full text-left text-sm"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] uppercase text-slate-400"><tr><th class="px-4 py-3">Time</th><th class="px-4 py-3">User</th><th class="px-4 py-3">Path</th><th class="px-4 py-3 text-right">Status</th></tr></thead><tbody class="divide-y divide-slate-200 dark:divide-slate-800/40"><template x-for="row in reports.quotaEvents.rows" :key="row.id"><tr><td class="px-4 py-3" x-text="formatDateTimeShort(row.started_at)"></td><td class="px-4 py-3 font-bold" x-text="row.user_id || '-' "></td><td class="px-4 py-3" x-text="row.path"></td><td class="px-4 py-3 text-right" x-text="row.status"></td></tr></template><tr x-show="(reports.quotaEvents.rows || []).length === 0"><td colspan="4" class="px-4 py-6 text-center text-slate-400">No blocked quota events in this range.</td></tr></tbody></table></div>
                             </div>
                         </div>
                     </section>
@@ -347,8 +411,10 @@
                 configView: {},
                 configDraft: {},
                 errors: {},
-                menuItems: [{ id: 'overview', label: 'Command Center', icon: 'fa-solid fa-gauge-high' }, { id: 'users', label: 'User Hub', icon: 'fa-solid fa-user-gear' }, { id: 'groups', label: 'Group Logic', icon: 'fa-solid fa-sitemap' }, { id: 'policies', label: 'Quota Policies', icon: 'fa-solid fa-shield-halved' }, { id: 'system', label: 'System Health', icon: 'fa-solid fa-heart-pulse' }, { id: 'logs', label: 'Usage Logs', icon: 'fa-solid fa-receipt' }],
+                menuItems: [{ id: 'overview', label: 'Command Center', icon: 'fa-solid fa-gauge-high' }, { id: 'users', label: 'User Hub', icon: 'fa-solid fa-user-gear' }, { id: 'groups', label: 'Group Logic', icon: 'fa-solid fa-sitemap' }, { id: 'policies', label: 'Quota Policies', icon: 'fa-solid fa-shield-halved' }, { id: 'reports', label: 'Reports', icon: 'fa-solid fa-chart-column' }, { id: 'system', label: 'System Health', icon: 'fa-solid fa-heart-pulse' }, { id: 'logs', label: 'Usage Logs', icon: 'fa-solid fa-receipt' }],
                 stats: { total_users: 0, total_policies: 0, total_tokens: 0, total_cost: 0, total_requests: 0, last_24h: { tokens: 0, cost: 0, requests: 0, avg_latency_ms: 0, p95_latency_ms: 0, max_latency_ms: 0 }, top_models: [], top_users: [] },
+                reports: { summary: { summary: {}, top_models: [], top_users: [] }, users: { rows: [] }, groups: { rows: [] }, costs: { by_day: [], by_model: [] }, quotaEvents: { rows: [] } },
+                reportFilter: { range: '30d', limit: 100 },
                 performance: { summary: {}, recent: [] },
                 performanceFilter: { user_id: '', model: '', path: '', status: '' },
                 newPolicy: { id: '', name: '', limit_type: 'token', scope_period: 'monthly', daily_token_limit: 50000, monthly_token_limit: 1000000, daily_cost_limit: 0, monthly_cost_limit: 0, token_limit: 1000000, cost_limit: 0, formula_kind: 'max_ratio', formula_config: { threshold: 1, token_weight: 0.5, cost_weight: 0.5 }, allowed_models: '*' },
@@ -397,6 +463,10 @@
                         Object.entries(this.performanceFilter).forEach(([k, v]) => { if (v) perfParams.set(k, String(v)); });
                         const perfUrl = '/admin/performance' + (perfParams.toString() ? `?${perfParams.toString()}` : '');
 
+                        const reportParams = new URLSearchParams();
+                        reportParams.set('range', this.reportFilter.range);
+                        reportParams.set('limit', String(this.reportFilter.limit));
+
                         const endpoints = {
                             users: '/admin/users',
                             policies: '/admin/policies',
@@ -405,6 +475,11 @@
                             webuiGroups: '/admin/openwebui-groups',
                             stats: '/admin/stats',
                             performance: perfUrl,
+                            reportsSummary: `/admin/reports/summary?${reportParams.toString()}`,
+                            reportsUsers: `/admin/reports/users?${reportParams.toString()}`,
+                            reportsGroups: `/admin/reports/groups?${reportParams.toString()}`,
+                            reportsCosts: `/admin/reports/costs?${reportParams.toString()}`,
+                            reportsQuotaEvents: `/admin/reports/quota-events?${reportParams.toString()}`,
                             health: '/admin/health',
                             config: '/admin/config',
                             systemLogs: '/admin/system-logs'
@@ -437,6 +512,11 @@
                             else if (key === 'webuiGroups') this.webuiGroups = value;
                             else if (key === 'stats') this.stats = value;
                             else if (key === 'performance') this.performance = value;
+                            else if (key === 'reportsSummary') this.reports.summary = value;
+                            else if (key === 'reportsUsers') this.reports.users = value;
+                            else if (key === 'reportsGroups') this.reports.groups = value;
+                            else if (key === 'reportsCosts') this.reports.costs = value;
+                            else if (key === 'reportsQuotaEvents') this.reports.quotaEvents = value;
                             else if (key === 'health') this.systemHealth = value;
                             else if (key === 'config') {
                                 this.configView = value.config || {};
