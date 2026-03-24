@@ -1,5 +1,7 @@
         function dashboard() {
+            const reportsModule = window.createReportsModule ? window.createReportsModule() : {};
             return {
+                ...reportsModule,
                 view: 'overview', darkMode: localStorage.getItem('theme') === 'dark', adminKey: localStorage.getItem('adminKey') || '', keyInput: '', loading: false,
                 users: [], policies: [], groupPolicies: [], webuiGroups: [], usage: [],
                 systemHealth: { status: 'unknown', checks: {} },
@@ -9,8 +11,6 @@
                 errors: {},
                 menuItems: [{ id: 'overview', label: 'Command Center', icon: 'fa-solid fa-gauge-high' }, { id: 'users', label: 'User Hub', icon: 'fa-solid fa-user-gear' }, { id: 'groups', label: 'Group Logic', icon: 'fa-solid fa-sitemap' }, { id: 'policies', label: 'Quota Policies', icon: 'fa-solid fa-shield-halved' }, { id: 'reports', label: 'Reports', icon: 'fa-solid fa-chart-column' }, { id: 'system', label: 'System Health', icon: 'fa-solid fa-heart-pulse' }, { id: 'logs', label: 'Usage Logs', icon: 'fa-solid fa-receipt' }],
                 stats: { total_users: 0, total_policies: 0, total_tokens: 0, total_cost: 0, total_requests: 0, last_24h: { tokens: 0, cost: 0, requests: 0, avg_latency_ms: 0, p95_latency_ms: 0, max_latency_ms: 0 }, top_models: [], top_users: [] },
-                reports: { summary: { summary: {}, top_models: [], top_users: [] }, users: { rows: [] }, groups: { rows: [] }, costs: { by_day: [], by_model: [] }, quotaEvents: { rows: [] } },
-                reportFilter: { range: '30d', limit: 100 },
                 performance: { summary: {}, recent: [] },
                 performanceFilter: { user_id: '', model: '', path: '', status: '' },
                 newPolicy: { id: '', name: '', limit_type: 'token', scope_period: 'monthly', daily_token_limit: 50000, monthly_token_limit: 1000000, daily_cost_limit: 0, monthly_cost_limit: 0, token_limit: 1000000, cost_limit: 0, formula_kind: 'max_ratio', formula_config: { threshold: 1, token_weight: 0.5, cost_weight: 0.5 }, allowed_models: '*' },
@@ -142,43 +142,6 @@
                     this.performanceFilter = { user_id: '', model: '', path: '', status: '' };
                     await this.refreshAll();
                 },
-                metricValue(row) {
-                    return Number(row?.[this.reportFilter.metric] || 0);
-                },
-                formatMetricValue(row) {
-                    return this.reportFilter.metric === 'tokens' ? `${this.formatNumber(row?.tokens || 0)} tok` : '$' + Number(row?.cost || 0).toFixed(4);
-                },
-                rankedRows(rows) {
-                    return [...(rows || [])].sort((a, b) => this.metricValue(b) - this.metricValue(a));
-                },
-                async openReportDetail(type, id) {
-                    const headers = { 'x-admin-key': this.adminKey };
-                    const url = type === 'user' ? `/admin/reports/user/${encodeURIComponent(id)}?range=${this.reportFilter.range}` : type === 'group' ? `/admin/reports/group/${encodeURIComponent(id)}?range=${this.reportFilter.range}` : `/admin/reports/model/${encodeURIComponent(id)}?range=${this.reportFilter.range}`;
-                    const response = await fetch(url, { headers });
-                    this.reportDetail = { open: true, type, title: id, data: await response.json() };
-                },
-                openTimeDrilldown(day) {
-                    const rows = (this.reports.costs.by_day || []).filter(r => String(r.day).slice(0,10) === String(day).slice(0,10));
-                    this.reportDetail = { open: true, type: 'day', title: `Day ${this.formatDate(day)}`, data: { summary: rows[0] || {}, by_day: rows } };
-                },
-                openQuotaBreakdown(category) {
-                    const rows = (this.reports.quotaEvents.rows || []).filter(r => (r.denied_category || 'quota') === category);
-                    this.reportDetail = { open: true, type: 'quota', title: this.formatQuotaCategory(category), data: { summary: { requests: rows.length, tokens: 0, cost: 0 }, quota_events: rows } };
-                },
-                reportDetailRows() {
-                    const d = this.reportDetail.data || {};
-                    return d.by_model || d.by_user || d.members || [];
-                },
-                detailRowKey(row) { return row.model || row.user_id || row.day || JSON.stringify(row); },
-                detailRowName(row) { return row.model || row.user_id || row.day || '-'; },
-                reportDetailTimelineRows() {
-                    const d = this.reportDetail.data || {};
-                    return d.by_day || d.quota_events || [];
-                },
-                detailTimelineKey(row) { return row.day || row.id || JSON.stringify(row); },
-                detailTimelineWhen(row) { return row.day ? this.formatDate(row.day) : this.formatDateTimeShort(row.started_at); },
-                detailTimelineInfo(row) { return row.day ? 'Daily summary' : `${this.formatQuotaCategory(row.denied_category || 'quota')}: ${row.denied_reason || row.path || '-'}`; },
-                detailTimelineMetric(row) { return row.day ? (this.reportFilter.metric === 'tokens' ? this.formatNumber(row.tokens) + ' tok' : '$' + Number(row.cost || 0).toFixed(4)) : String(row.status || ''); },
                 formatNumber(n) { return new Intl.NumberFormat().format(n || 0); },
                 formatPolicyType(policy) {
                     const type = policy.limit_type || 'token';
