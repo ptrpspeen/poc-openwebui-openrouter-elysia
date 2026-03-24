@@ -1353,6 +1353,7 @@ const app = new Elysia()
   .get("/", () => Bun.file("public/index.html"))
   .get("/js/admin.js", () => Bun.file("public/js/admin.js"))
   .get("/js/reports.js", () => Bun.file("public/js/reports.js"))
+  .get("/js/policies.js", () => Bun.file("public/js/policies.js"))
   .listen(8080);
 
 console.log(`🦊 AI Control Plane running at http://localhost:${app.server?.port}`);
