@@ -1,8 +1,8 @@
-name: Publish Middleware Image (prod)
+name: Publish Middleware Image (GHCR)
 
 on:
   push:
-    branches: [prod]
+    branches: [test, prod]
 
 permissions:
   contents: read
@@ -33,7 +33,6 @@ jobs:
           tags: |
             type=ref,event=branch
             type=sha
-            type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
             type=raw,value=prod,enable=${{ github.ref_name == 'prod' }}
 
       - name: Build and push
