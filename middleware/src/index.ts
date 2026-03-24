@@ -1226,6 +1226,36 @@ const app = new Elysia()
         `, [since]);
         return { range: getReportSince(query, "30 days"), since, rows, breakdown };
       })
+      .get("/reports/user/:id", async ({ params, query }: any) => {
+        const since = buildSinceDate(query, "30 days");
+        const userId = params.id;
+        const summary = await db.get(`SELECT user_id, COUNT(*)::int AS requests, COALESCE(SUM(total_tokens),0)::bigint AS tokens, COALESCE(SUM(total_cost),0)::float AS cost, COALESCE(MAX(ts), NOW()) AS last_seen FROM usage_logs WHERE user_id = $1 AND ts >= $2 GROUP BY user_id`, [userId, since]);
+        const byDay = await db.all(`SELECT DATE(ts) AS day, COUNT(*)::int AS requests, COALESCE(SUM(total_tokens),0)::bigint AS tokens, COALESCE(SUM(total_cost),0)::float AS cost FROM usage_logs WHERE user_id = $1 AND ts >= $2 GROUP BY DATE(ts) ORDER BY day DESC`, [userId, since]);
+        const byModel = await db.all(`SELECT model, COUNT(*)::int AS requests, COALESCE(SUM(total_tokens),0)::bigint AS tokens, COALESCE(SUM(total_cost),0)::float AS cost FROM usage_logs WHERE user_id = $1 AND ts >= $2 GROUP BY model ORDER BY cost DESC, tokens DESC`, [userId, since]);
+        const events = await db.all(`SELECT id, denied_category, denied_reason, started_at, path, status FROM request_logs WHERE user_id = $1 AND started_at >= $2 AND status = 403 ORDER BY id DESC LIMIT 100`, [userId, since]);
+        const groups = await getUserGroups(userId);
+        return { id: userId, since, summary: summary || { user_id: userId, requests: 0, tokens: 0, cost: 0 }, groups, by_day: byDay, by_model: byModel, quota_events: events };
+      })
+      .get("/reports/group/:name", async ({ params, query }: any) => {
+        const since = buildSinceDate(query, "30 days");
+        const groupName = decodeURIComponent(params.name);
+        const userRows = await db.all(`SELECT user_id, COUNT(*)::int AS requests, COALESCE(SUM(total_tokens),0)::bigint AS tokens, COALESCE(SUM(total_cost),0)::float AS cost FROM usage_logs WHERE ts >= $1 GROUP BY user_id`, [since]);
+        const members = [];
+        for (const row of userRows) {
+          const groups = await getUserGroups(row.user_id);
+          if (groups.includes(groupName)) members.push(row);
+        }
+        const summary = members.reduce((acc, row) => ({ requests: acc.requests + Number(row.requests||0), tokens: acc.tokens + Number(row.tokens||0), cost: acc.cost + Number(row.cost||0), active_users: acc.active_users + 1 }), { requests: 0, tokens: 0, cost: 0, active_users: 0 });
+        return { name: groupName, since, summary, members };
+      })
+      .get("/reports/model/:name", async ({ params, query }: any) => {
+        const since = buildSinceDate(query, "30 days");
+        const model = decodeURIComponent(params.name);
+        const summary = await db.get(`SELECT model, COUNT(*)::int AS requests, COALESCE(SUM(total_tokens),0)::bigint AS tokens, COALESCE(SUM(total_cost),0)::float AS cost FROM usage_logs WHERE model = $1 AND ts >= $2 GROUP BY model`, [model, since]);
+        const byUser = await db.all(`SELECT user_id, COUNT(*)::int AS requests, COALESCE(SUM(total_tokens),0)::bigint AS tokens, COALESCE(SUM(total_cost),0)::float AS cost FROM usage_logs WHERE model = $1 AND ts >= $2 GROUP BY user_id ORDER BY cost DESC, tokens DESC`, [model, since]);
+        const byDay = await db.all(`SELECT DATE(ts) AS day, COUNT(*)::int AS requests, COALESCE(SUM(total_tokens),0)::bigint AS tokens, COALESCE(SUM(total_cost),0)::float AS cost FROM usage_logs WHERE model = $1 AND ts >= $2 GROUP BY DATE(ts) ORDER BY day DESC`, [model, since]);
+        return { name: model, since, summary: summary || { model, requests: 0, tokens: 0, cost: 0 }, by_user: byUser, by_day: byDay };
+      })
       .get("/performance", async ({ query }: any) => {
         const q = query || {};
         const where: string[] = ["started_at >= NOW() - INTERVAL '24 hours'"];
