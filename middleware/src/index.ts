@@ -293,6 +293,20 @@ function buildSinceDate(query: any, fallback = "30 days") {
   return new Date(Date.now() - ({ "24 hours": 24, "7 days": 24*7, "30 days": 24*30, "90 days": 24*90 } as Record<string, number>)[since] * 60 * 60 * 1000).toISOString();
 }
 
+function buildPreviousSinceDate(query: any, fallback = "30 days") {
+  const since = getReportSince(query, fallback);
+  const hours = ({ "24 hours": 24, "7 days": 24 * 7, "30 days": 24 * 30, "90 days": 24 * 90 } as Record<string, number>)[since];
+  return {
+    currentSince: new Date(Date.now() - hours * 60 * 60 * 1000).toISOString(),
+    previousSince: new Date(Date.now() - hours * 2 * 60 * 60 * 1000).toISOString(),
+  };
+}
+
+function pctChange(current: number, previous: number) {
+  if (!previous) return current ? 100 : 0;
+  return ((current - previous) / previous) * 100;
+}
+
 function normalizePolicyInput(input: any) {
   const limit_type = String(input?.limit_type || "token").trim();
   const scope_period = String(input?.scope_period || "monthly").trim();
@@ -602,9 +616,9 @@ async function startBackgroundWorker() {
       const perfBatch = await drainQueue("request_perf_queue", 100);
       for (const p of perfBatch) {
         await db.run(
-          `INSERT INTO request_logs (user_id, model, path, method, status, is_stream, latency_ms, total_cost, started_at, completed_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-          [p.user_id, p.model, p.path, p.method, p.status, p.is_stream, p.latency_ms, p.total_cost || 0, p.started_at, p.completed_at]
+          `INSERT INTO request_logs (user_id, model, path, method, status, is_stream, latency_ms, total_cost, denied_reason, denied_category, started_at, completed_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+          [p.user_id, p.model, p.path, p.method, p.status, p.is_stream, p.latency_ms, p.total_cost || 0, p.denied_reason || null, p.denied_category || null, p.started_at, p.completed_at]
         );
       }
 
@@ -640,6 +654,8 @@ function logRequestPerformance(args: {
   startedAt: Date;
   completedAt: Date;
   totalCost?: number;
+  deniedReason?: string | null;
+  deniedCategory?: string | null;
 }) {
   if (Math.random() > REQUEST_LOG_SAMPLE_RATE) return;
 
@@ -653,6 +669,8 @@ function logRequestPerformance(args: {
     is_stream: args.isStream,
     latency_ms: latencyMs,
     total_cost: Number(args.totalCost || 0),
+    denied_reason: args.deniedReason || null,
+    denied_category: args.deniedCategory || null,
     started_at: args.startedAt.toISOString(),
     completed_at: args.completedAt.toISOString(),
   };
@@ -742,9 +760,28 @@ const app = new Elysia()
       if (userId) {
         const access = await checkAccess(userId);
         if (!access.allowed) {
+          const deniedReason = access.reason || "Quota exceeded";
+          const deniedCategory = deniedReason.toLowerCase().includes('daily token') ? 'daily_token' :
+            deniedReason.toLowerCase().includes('monthly token') ? 'monthly_token' :
+            deniedReason.toLowerCase().includes('daily cost') ? 'daily_cost' :
+            deniedReason.toLowerCase().includes('monthly cost') ? 'monthly_cost' :
+            deniedReason.toLowerCase().includes('formula') ? 'formula' : 'quota';
+          logRequestPerformance({
+            userId,
+            model: body.model || '',
+            path,
+            method: request.method,
+            status: 403,
+            isStream: Boolean(body.stream),
+            startedAt: requestStartedAt,
+            completedAt: new Date(),
+            totalCost: 0,
+            deniedReason,
+            deniedCategory,
+          });
           set.status = 403;
           return {
-            error: access.reason || "Quota exceeded",
+            error: deniedReason,
             policy: access.policy,
             usage: access.usage,
             details: access.details,
@@ -1023,7 +1060,8 @@ const app = new Elysia()
           };
       })
       .get("/reports/summary", async ({ query }: any) => {
-        const since = buildSinceDate(query, "30 days");
+        const { currentSince, previousSince } = buildPreviousSinceDate(query, "30 days");
+        const since = currentSince;
         const summary = await db.get(`
           SELECT
             COUNT(*)::int AS total_requests,
@@ -1061,7 +1099,47 @@ const app = new Elysia()
           LIMIT 10
         `, [since]);
 
-        return { range: getReportSince(query, "30 days"), since, summary: { ...summary, blocked_requests: Number(blocked?.blocked_requests || 0) }, top_models: topModels, top_users: topUsers };
+        const previousUsage = await db.get(`
+          SELECT COUNT(*)::int AS total_requests, COALESCE(SUM(total_tokens),0)::bigint AS total_tokens, COALESCE(SUM(total_cost),0)::float AS total_cost
+          FROM usage_logs
+          WHERE ts >= $1 AND ts < $2
+        `, [previousSince, currentSince]);
+        const previousBlocked = await db.get(`
+          SELECT COUNT(*)::int AS blocked_requests
+          FROM request_logs
+          WHERE started_at >= $1 AND started_at < $2 AND status = 403
+        `, [previousSince, currentSince]);
+
+        const topGroup = (await (async () => {
+          const usageByUser = await db.all(`SELECT user_id, COUNT(*)::int AS requests, COALESCE(SUM(total_tokens),0)::bigint AS tokens, COALESCE(SUM(total_cost),0)::float AS cost FROM usage_logs WHERE ts >= $1 GROUP BY user_id`, [since]);
+          const groupMap = new Map<string, number>();
+          for (const row of usageByUser) {
+            const groups = await getUserGroups(row.user_id);
+            for (const g of (groups.length ? groups : ['[ungrouped]'])) groupMap.set(g, (groupMap.get(g) || 0) + Number(row.cost || 0));
+          }
+          const [name, cost] = [...groupMap.entries()].sort((a,b)=>b[1]-a[1])[0] || ['-',0];
+          return { group_name: name, cost };
+        })());
+
+        return {
+          range: getReportSince(query, "30 days"),
+          since,
+          summary: { ...summary, blocked_requests: Number(blocked?.blocked_requests || 0) },
+          comparison: {
+            requests_pct: pctChange(Number(summary?.total_requests || 0), Number(previousUsage?.total_requests || 0)),
+            tokens_pct: pctChange(Number(summary?.total_tokens || 0), Number(previousUsage?.total_tokens || 0)),
+            cost_pct: pctChange(Number(summary?.total_cost || 0), Number(previousUsage?.total_cost || 0)),
+            blocked_pct: pctChange(Number(blocked?.blocked_requests || 0), Number(previousBlocked?.blocked_requests || 0)),
+            previous: { ...previousUsage, blocked_requests: Number(previousBlocked?.blocked_requests || 0) }
+          },
+          executive: {
+            top_spender: topUsers[0] || null,
+            most_expensive_model: topModels[0] || null,
+            most_active_group: topGroup
+          },
+          top_models: topModels,
+          top_users: topUsers
+        };
       })
       .get("/reports/users", async ({ query }: any) => {
         const since = buildSinceDate(query, "30 days");
@@ -1133,13 +1211,20 @@ const app = new Elysia()
         const since = buildSinceDate(query, "30 days");
         const limit = getLimit(query, 200);
         const rows = await db.all(`
-          SELECT id, user_id, model, path, method, status, total_cost, started_at, completed_at
+          SELECT id, user_id, model, path, method, status, total_cost, denied_reason, denied_category, started_at, completed_at
           FROM request_logs
           WHERE started_at >= $1 AND status = 403
           ORDER BY id DESC
           LIMIT ${limit}
         `, [since]);
-        return { range: getReportSince(query, "30 days"), since, rows };
+        const breakdown = await db.all(`
+          SELECT COALESCE(denied_category, 'quota') AS category, COUNT(*)::int AS count
+          FROM request_logs
+          WHERE started_at >= $1 AND status = 403
+          GROUP BY COALESCE(denied_category, 'quota')
+          ORDER BY count DESC
+        `, [since]);
+        return { range: getReportSince(query, "30 days"), since, rows, breakdown };
       })
       .get("/performance", async ({ query }: any) => {
         const q = query || {};

@@ -135,6 +135,8 @@ export async function initDb() {
   `);
 
   await db.run(`ALTER TABLE request_logs ADD COLUMN IF NOT EXISTS total_cost NUMERIC(15, 10) DEFAULT 0`);
+  await db.run(`ALTER TABLE request_logs ADD COLUMN IF NOT EXISTS denied_reason TEXT`);
+  await db.run(`ALTER TABLE request_logs ADD COLUMN IF NOT EXISTS denied_category TEXT`);
   await db.run(`CREATE INDEX IF NOT EXISTS idx_request_logs_started_at ON request_logs(started_at DESC)`);
   await db.run(`CREATE INDEX IF NOT EXISTS idx_request_logs_completed_at ON request_logs(completed_at DESC)`);
   await db.run(`CREATE INDEX IF NOT EXISTS idx_request_logs_user_started ON request_logs(user_id, started_at DESC)`);
