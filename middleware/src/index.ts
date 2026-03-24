@@ -274,6 +274,25 @@ function classifyUpstreamError(status: number, payload: any) {
   };
 }
 
+function getReportSince(query: any, fallback = "30 days") {
+  const range = String(query?.range || "").trim().toLowerCase();
+  if (range === "24h" || range === "1d") return "24 hours";
+  if (range === "7d" || range === "7days" || range === "week") return "7 days";
+  if (range === "30d" || range === "30days" || range === "month") return "30 days";
+  if (range === "90d" || range === "90days") return "90 days";
+  return fallback;
+}
+
+function getLimit(query: any, fallback = 100) {
+  const n = Number(query?.limit || fallback);
+  return Number.isFinite(n) ? Math.max(1, Math.min(1000, Math.floor(n))) : fallback;
+}
+
+function buildSinceDate(query: any, fallback = "30 days") {
+  const since = getReportSince(query, fallback);
+  return new Date(Date.now() - ({ "24 hours": 24, "7 days": 24*7, "30 days": 24*30, "90 days": 24*90 } as Record<string, number>)[since] * 60 * 60 * 1000).toISOString();
+}
+
 function normalizePolicyInput(input: any) {
   const limit_type = String(input?.limit_type || "token").trim();
   const scope_period = String(input?.scope_period || "monthly").trim();
@@ -1002,6 +1021,125 @@ const app = new Elysia()
               top_models: topModels,
               top_users: topUsers
           };
+      })
+      .get("/reports/summary", async ({ query }: any) => {
+        const since = buildSinceDate(query, "30 days");
+        const summary = await db.get(`
+          SELECT
+            COUNT(*)::int AS total_requests,
+            COUNT(DISTINCT user_id)::int AS active_users,
+            COUNT(DISTINCT model)::int AS active_models,
+            COALESCE(SUM(total_tokens), 0)::bigint AS total_tokens,
+            COALESCE(SUM(total_cost), 0)::float AS total_cost,
+            COALESCE(AVG(total_tokens), 0)::float AS avg_tokens_per_request,
+            COALESCE(AVG(total_cost), 0)::float AS avg_cost_per_request
+          FROM usage_logs
+          WHERE ts >= $1
+        `, [since]);
+
+        const blocked = await db.get(`
+          SELECT COUNT(*)::int AS blocked_requests
+          FROM request_logs
+          WHERE started_at >= $1 AND status = 403
+        `, [since]);
+
+        const topModels = await db.all(`
+          SELECT model, COUNT(*)::int AS requests, COALESCE(SUM(total_tokens),0)::bigint AS tokens, COALESCE(SUM(total_cost),0)::float AS cost
+          FROM usage_logs
+          WHERE ts >= $1
+          GROUP BY model
+          ORDER BY cost DESC, requests DESC
+          LIMIT 10
+        `, [since]);
+
+        const topUsers = await db.all(`
+          SELECT user_id, COUNT(*)::int AS requests, COALESCE(SUM(total_tokens),0)::bigint AS tokens, COALESCE(SUM(total_cost),0)::float AS cost
+          FROM usage_logs
+          WHERE ts >= $1
+          GROUP BY user_id
+          ORDER BY cost DESC, tokens DESC
+          LIMIT 10
+        `, [since]);
+
+        return { range: getReportSince(query, "30 days"), since, summary: { ...summary, blocked_requests: Number(blocked?.blocked_requests || 0) }, top_models: topModels, top_users: topUsers };
+      })
+      .get("/reports/users", async ({ query }: any) => {
+        const since = buildSinceDate(query, "30 days");
+        const limit = getLimit(query, 100);
+        const rows = await db.all(`
+          SELECT user_id, COUNT(*)::int AS requests, COALESCE(SUM(total_tokens),0)::bigint AS tokens, COALESCE(SUM(total_cost),0)::float AS cost,
+                 COALESCE(MAX(ts), NOW()) AS last_seen
+          FROM usage_logs
+          WHERE ts >= $1
+          GROUP BY user_id
+          ORDER BY cost DESC, tokens DESC
+          LIMIT ${limit}
+        `, [since]);
+
+        const out = [];
+        for (const row of rows) {
+          const user: any = await getUserCached(row.user_id);
+          const groups = await getUserGroups(row.user_id);
+          const effectivePolicyId = user ? await resolveEffectivePolicy(user, groups) : null;
+          out.push({ ...row, groups, effective_policy_id: effectivePolicyId, is_active: user?.is_active ?? null, assigned_policy_id: user?.policy_id ?? null });
+        }
+        return { range: getReportSince(query, "30 days"), since, rows: out };
+      })
+      .get("/reports/groups", async ({ query }: any) => {
+        const since = buildSinceDate(query, "30 days");
+        const usageByUser = await db.all(`
+          SELECT user_id, COUNT(*)::int AS requests, COALESCE(SUM(total_tokens),0)::bigint AS tokens, COALESCE(SUM(total_cost),0)::float AS cost
+          FROM usage_logs
+          WHERE ts >= $1
+          GROUP BY user_id
+        `, [since]);
+
+        const groupMap = new Map<string, { group_name: string; active_users: number; requests: number; tokens: number; cost: number }>();
+        for (const row of usageByUser) {
+          const groups = await getUserGroups(row.user_id);
+          const targets = groups.length ? groups : ["[ungrouped]"];
+          for (const groupName of targets) {
+            const current = groupMap.get(groupName) || { group_name: groupName, active_users: 0, requests: 0, tokens: 0, cost: 0 };
+            current.active_users += 1;
+            current.requests += Number(row.requests || 0);
+            current.tokens += Number(row.tokens || 0);
+            current.cost += Number(row.cost || 0);
+            groupMap.set(groupName, current);
+          }
+        }
+
+        const rows = [...groupMap.values()].sort((a, b) => (b.cost - a.cost) || (b.tokens - a.tokens));
+        return { range: getReportSince(query, "30 days"), since, rows };
+      })
+      .get("/reports/costs", async ({ query }: any) => {
+        const since = buildSinceDate(query, "30 days");
+        const byDay = await db.all(`
+          SELECT DATE(ts) AS day, COUNT(*)::int AS requests, COALESCE(SUM(total_tokens),0)::bigint AS tokens, COALESCE(SUM(total_cost),0)::float AS cost
+          FROM usage_logs
+          WHERE ts >= $1
+          GROUP BY DATE(ts)
+          ORDER BY day DESC
+        `, [since]);
+        const byModel = await db.all(`
+          SELECT model, COUNT(*)::int AS requests, COALESCE(SUM(total_tokens),0)::bigint AS tokens, COALESCE(SUM(total_cost),0)::float AS cost
+          FROM usage_logs
+          WHERE ts >= $1
+          GROUP BY model
+          ORDER BY cost DESC, requests DESC
+        `, [since]);
+        return { range: getReportSince(query, "30 days"), since, by_day: byDay, by_model: byModel };
+      })
+      .get("/reports/quota-events", async ({ query }: any) => {
+        const since = buildSinceDate(query, "30 days");
+        const limit = getLimit(query, 200);
+        const rows = await db.all(`
+          SELECT id, user_id, model, path, method, status, total_cost, started_at, completed_at
+          FROM request_logs
+          WHERE started_at >= $1 AND status = 403
+          ORDER BY id DESC
+          LIMIT ${limit}
+        `, [since]);
+        return { range: getReportSince(query, "30 days"), since, rows };
       })
       .get("/performance", async ({ query }: any) => {
         const q = query || {};
