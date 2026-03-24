@@ -31,8 +31,10 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}/middleware
           tags: |
-            type=raw,value=prod
+            type=ref,event=branch
             type=sha
+            type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
+            type=raw,value=prod,enable=${{ github.ref_name == 'prod' }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
