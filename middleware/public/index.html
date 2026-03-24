@@ -337,7 +337,7 @@
                             </div>
                             <div class="glass rounded-2xl overflow-hidden shadow-xl">
                                 <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800/60 flex items-center justify-between"><h3 class="text-sm font-black uppercase tracking-widest">Cost by Model</h3><button @click="exportCsv('reports-cost-by-model.csv', reports.costs.by_model)" class="text-[10px] font-black uppercase text-slate-400 hover:text-luxury-500">CSV</button></div>
-                                <div class="p-4 space-y-2 border-b border-slate-200 dark:border-slate-800/60"><template x-for="row in reports.costs.by_model.slice(0,5)" :key="row.model + '-costbar'"><div><div class="flex justify-between text-[10px] mb-1"><span class="font-bold truncate max-w-[60%]" x-text="row.model"></span><span x-text="'$' + Number(row.cost || 0).toFixed(4)"></span></div><div class="h-2 rounded bg-slate-200 dark:bg-slate-800 overflow-hidden"><div class="h-full bg-sky-500" :style="barStyle(row.cost, reports.costs.by_model, 'cost')"></div></div></div></template></div>
+                                <div class="p-4 space-y-2 border-b border-slate-200 dark:border-slate-800/60"><template x-for="row in rankedRows(reports.costs.by_model).slice(0,5)" :key="row.model + '-costbar'"><div class="cursor-pointer" @click="openReportDetail('model', row.model)"><div class="flex justify-between text-[10px] mb-1"><span class="font-bold truncate max-w-[60%]" x-text="row.model"></span><span x-text="formatMetricValue(row)"></span></div><div class="h-2 rounded bg-slate-200 dark:bg-slate-800 overflow-hidden"><div class="h-full bg-sky-500" :style="barStyle(metricValue(row), rankedRows(reports.costs.by_model), reportFilter.metric)"></div></div></div></template></div>
                                 <div class="overflow-x-auto max-h-[320px]"><table class="w-full text-left text-sm"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] uppercase text-slate-400"><tr><th class="px-4 py-3">Model</th><th class="px-4 py-3 text-right">Req</th><th class="px-4 py-3 text-right">Tokens</th><th class="px-4 py-3 text-right">Cost</th></tr></thead><tbody class="divide-y divide-slate-200 dark:divide-slate-800/40"><template x-for="row in reports.costs.by_model" :key="row.model"><tr><td class="px-4 py-3 font-bold" x-text="row.model"></td><td class="px-4 py-3 text-right" x-text="row.requests"></td><td class="px-4 py-3 text-right" x-text="formatNumber(row.tokens)"></td><td class="px-4 py-3 text-right" x-text="'$' + Number(row.cost || 0).toFixed(4)"></td></tr></template></tbody></table></div>
                             </div>
                         </div>
@@ -433,6 +433,10 @@
 
         <script src="/js/reports.js"></script>
         <script src="/js/policies.js"></script>
+        <script src="/js/admin.js"></script>
+</body>
+</html>
+src="/js/policies.js"></script>
         <script src="/js/admin.js"></script>
 </body>
 </html>
