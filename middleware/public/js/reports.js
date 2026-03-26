@@ -1,6 +1,6 @@
 window.createReportsModule = function () {
     return {
-        reports: { summary: { summary: {}, top_models: [], top_users: [] }, users: { rows: [] }, groups: { rows: [] }, costs: { by_day: [], by_model: [] }, quotaEvents: { rows: [], breakdown: [] } },
+        reports: { summary: { summary: {}, top_models: [], top_users: [] }, users: { rows: [] }, groups: { rows: [] }, costs: { by_day: [], by_model: [] }, quotaEvents: { rows: [], breakdown: [] }, userModels: { rows: [] }, modelUsers: { rows: [] } },
         reportFilter: { range: '30d', limit: 100, metric: 'cost' },
         reportDetail: { open: false, type: '', title: '', data: null },
 
@@ -45,6 +45,23 @@ window.createReportsModule = function () {
         detailTimelineWhen(row) { return row.day ? this.formatDate(row.day) : this.formatDateTimeShort(row.started_at); },
         detailTimelineInfo(row) { return row.day ? 'Daily summary' : `${this.formatQuotaCategory(row.denied_category || 'quota')}: ${row.denied_reason || row.path || '-'}`; },
         detailTimelineMetric(row) { return row.day ? (this.reportFilter.metric === 'tokens' ? this.formatNumber(row.tokens) + ' tok' : '$' + Number(row.cost || 0).toFixed(4)) : String(row.status || ''); },
+        detailRowLastUsed(row) {
+            const value = row?.last_used || row?.last_seen || row?.last_used_at || row?.ts || row?.started_at || null;
+            return value ? this.formatDateTimeShort(value) : '-';
+        },
+        detailRowLabel() {
+            return this.reportDetail.type === 'model' ? 'User' : 'Model';
+        },
+        detailSummaryLastSeen() {
+            const value = this.reportDetail?.data?.summary?.last_used || this.reportDetail?.data?.summary?.last_seen || null;
+            return value ? this.formatDateTimeShort(value) : '-';
+        },
+        userModelBreakdownRows() {
+            return this.rankedRows(this.reports.userModels?.rows || []);
+        },
+        modelUserBreakdownRows() {
+            return this.rankedRows(this.reports.modelUsers?.rows || []);
+        },
         barStyle(value, rows, field = 'cost') {
             const nums = (rows || []).map(r => Number(r?.[field] || 0));
             const max = Math.max(0, ...nums);
