@@ -36,6 +36,8 @@ Use this file as the first orientation point before editing the admin dashboard 
   - Reports filters
   - Metric toggle logic
   - Drill-down modal behavior
+  - Detail modal formatting (`last_used` / `last_seen`)
+  - Breakdown helpers for `user-models` and `model-users`
   - CSV export helpers for reports
 
 - `middleware/public/js/policies.js`
@@ -50,6 +52,12 @@ Use this file as the first orientation point before editing the admin dashboard 
 - Backend aggregates/endpoints: `middleware/src/index.ts`
 - Report UI behavior/state: `middleware/public/js/reports.js`
 - Report markup/cards/tables: `middleware/public/index.html`
+- Current report-specific additions:
+  - detail modal summary + timeline
+  - `last_used` / `last_seen` rendering in drill-down views
+  - dedicated `/admin/reports/user-models`
+  - dedicated `/admin/reports/model-users`
+  - direct tables in Reports for `User Model Breakdown` and `Model User Breakdown`
 
 ### Quota policy logic
 - Database schema: `middleware/src/db.ts`

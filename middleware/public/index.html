@@ -342,6 +342,17 @@
                             </div>
                         </div>
 
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <div class="glass rounded-2xl overflow-hidden shadow-xl">
+                                <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800/60 flex items-center justify-between"><h3 class="text-sm font-black uppercase tracking-widest">User Model Breakdown</h3><button @click="exportCsv('reports-user-models.csv', reports.userModels.rows)" class="text-[10px] font-black uppercase text-slate-400 hover:text-luxury-500">CSV</button></div>
+                                <div class="overflow-x-auto max-h-[340px]"><table class="w-full text-left text-sm"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] uppercase text-slate-400"><tr><th class="px-4 py-3">User</th><th class="px-4 py-3">Model</th><th class="px-4 py-3 text-right">Req</th><th class="px-4 py-3 text-right">Tokens</th><th class="px-4 py-3 text-right">Cost</th><th class="px-4 py-3 text-right">Last Used</th></tr></thead><tbody class="divide-y divide-slate-200 dark:divide-slate-800/40"><template x-for="row in userModelBreakdownRows()" :key="row.user_id + '::' + row.model"><tr><td class="px-4 py-3 font-bold" x-text="row.user_id"></td><td class="px-4 py-3 text-xs" x-text="row.model"></td><td class="px-4 py-3 text-right" x-text="row.requests"></td><td class="px-4 py-3 text-right" x-text="formatNumber(row.tokens)"></td><td class="px-4 py-3 text-right" x-text="'$' + Number(row.cost || 0).toFixed(4)"></td><td class="px-4 py-3 text-right text-xs" x-text="detailRowLastUsed(row)"></td></tr></template><tr x-show="userModelBreakdownRows().length === 0"><td colspan="6" class="px-4 py-6 text-center text-slate-400">No user-model activity in this range.</td></tr></tbody></table></div>
+                            </div>
+                            <div class="glass rounded-2xl overflow-hidden shadow-xl">
+                                <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800/60 flex items-center justify-between"><h3 class="text-sm font-black uppercase tracking-widest">Model User Breakdown</h3><button @click="exportCsv('reports-model-users.csv', reports.modelUsers.rows)" class="text-[10px] font-black uppercase text-slate-400 hover:text-luxury-500">CSV</button></div>
+                                <div class="overflow-x-auto max-h-[340px]"><table class="w-full text-left text-sm"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] uppercase text-slate-400"><tr><th class="px-4 py-3">Model</th><th class="px-4 py-3">User</th><th class="px-4 py-3 text-right">Req</th><th class="px-4 py-3 text-right">Tokens</th><th class="px-4 py-3 text-right">Cost</th><th class="px-4 py-3 text-right">Last Used</th></tr></thead><tbody class="divide-y divide-slate-200 dark:divide-slate-800/40"><template x-for="row in modelUserBreakdownRows()" :key="row.model + '::' + row.user_id"><tr><td class="px-4 py-3 font-bold text-xs" x-text="row.model"></td><td class="px-4 py-3" x-text="row.user_id"></td><td class="px-4 py-3 text-right" x-text="row.requests"></td><td class="px-4 py-3 text-right" x-text="formatNumber(row.tokens)"></td><td class="px-4 py-3 text-right" x-text="'$' + Number(row.cost || 0).toFixed(4)"></td><td class="px-4 py-3 text-right text-xs" x-text="detailRowLastUsed(row)"></td></tr></template><tr x-show="modelUserBreakdownRows().length === 0"><td colspan="6" class="px-4 py-6 text-center text-slate-400">No model-user activity in this range.</td></tr></tbody></table></div>
+                            </div>
+                        </div>
+
                         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                             <div class="glass rounded-2xl overflow-hidden shadow-xl lg:col-span-1">
                                 <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800/60"><h3 class="text-sm font-black uppercase tracking-widest">Quota Breakdown</h3></div>
@@ -353,6 +364,112 @@
                             </div>
                         </div>
                     </section>
+
+                    <!-- REPORT DETAIL MODAL -->
+                    <div x-show="reportDetail.open" x-cloak class="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/70 px-4 py-8" x-transition.opacity>
+                        <div class="absolute inset-0" @click="reportDetail.open = false"></div>
+                        <div class="relative w-full max-w-6xl max-h-[90vh] overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shadow-2xl">
+                            <div class="flex items-start justify-between gap-4 border-b border-slate-200 dark:border-slate-800 px-6 py-5">
+                                <div>
+                                    <div class="text-[10px] uppercase tracking-widest text-slate-400 font-black">Report Detail</div>
+                                    <h3 class="text-lg font-black text-slate-900 dark:text-white" x-text="reportDetail.title"></h3>
+                                    <div class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                        <span class="mr-3">Type: <span class="font-semibold" x-text="reportDetail.type || '-'"></span></span>
+                                        <span>Since: <span class="font-semibold" x-text="formatDateTimeShort(reportDetail.data?.since || new Date())"></span></span>
+                                    </div>
+                                </div>
+                                <button @click="reportDetail.open = false" class="rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs font-black uppercase text-slate-500 hover:text-rose-500">Close</button>
+                            </div>
+
+                            <div class="max-h-[calc(90vh-88px)] overflow-y-auto p-6 space-y-6">
+                                <div class="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                                    <div class="glass p-4 rounded-2xl">
+                                        <div class="text-slate-400 text-[10px] uppercase font-black">Requests</div>
+                                        <div class="text-2xl font-black" x-text="formatNumber(reportDetail.data?.summary?.requests || 0)"></div>
+                                    </div>
+                                    <div class="glass p-4 rounded-2xl">
+                                        <div class="text-slate-400 text-[10px] uppercase font-black">Tokens</div>
+                                        <div class="text-2xl font-black" x-text="formatNumber(reportDetail.data?.summary?.tokens || 0)"></div>
+                                    </div>
+                                    <div class="glass p-4 rounded-2xl">
+                                        <div class="text-slate-400 text-[10px] uppercase font-black">Cost</div>
+                                        <div class="text-2xl font-black" x-text="'$' + Number(reportDetail.data?.summary?.cost || 0).toFixed(4)"></div>
+                                    </div>
+                                    <div class="glass p-4 rounded-2xl" x-show="reportDetail.type === 'group'">
+                                        <div class="text-slate-400 text-[10px] uppercase font-black">Active Users</div>
+                                        <div class="text-2xl font-black" x-text="formatNumber(reportDetail.data?.summary?.active_users || 0)"></div>
+                                    </div>
+                                    <div class="glass p-4 rounded-2xl">
+                                        <div class="text-slate-400 text-[10px] uppercase font-black">Last Seen</div>
+                                        <div class="text-sm font-bold" x-text="detailSummaryLastSeen()"></div>
+                                    </div>
+                                </div>
+
+                                <div x-show="(reportDetail.data?.groups || []).length" class="glass rounded-2xl p-4">
+                                    <div class="text-[10px] uppercase tracking-widest text-slate-400 font-black mb-3">Groups</div>
+                                    <div class="flex flex-wrap gap-2">
+                                        <template x-for="group in (reportDetail.data?.groups || [])" :key="group">
+                                            <span class="rounded-full bg-slate-100 dark:bg-slate-900 px-3 py-1 text-xs font-semibold" x-text="group"></span>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <div class="glass rounded-2xl overflow-hidden shadow-xl" x-show="reportDetailRows().length">
+                                    <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800/60 flex items-center justify-between">
+                                        <h3 class="text-sm font-black uppercase tracking-widest">Breakdown</h3>
+                                        <button @click="exportCsv(`report-detail-${reportDetail.type || 'rows'}.csv`, reportDetailRows())" class="text-[10px] font-black uppercase text-slate-400 hover:text-luxury-500">CSV</button>
+                                    </div>
+                                    <div class="overflow-x-auto max-h-[360px]">
+                                        <table class="w-full text-left text-sm">
+                                            <thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] uppercase text-slate-400">
+                                                <tr>
+                                                    <th class="px-4 py-3" x-text="detailRowLabel()"></th>
+                                                    <th class="px-4 py-3 text-right">Req</th>
+                                                    <th class="px-4 py-3 text-right">Tokens</th>
+                                                    <th class="px-4 py-3 text-right">Cost</th>
+                                                    <th class="px-4 py-3 text-right">Last Used</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40">
+                                                <template x-for="row in rankedRows(reportDetailRows())" :key="detailRowKey(row)">
+                                                    <tr>
+                                                        <td class="px-4 py-3 font-bold" x-text="detailRowName(row)"></td>
+                                                        <td class="px-4 py-3 text-right" x-text="row.requests || 0"></td>
+                                                        <td class="px-4 py-3 text-right" x-text="formatNumber(row.tokens || 0)"></td>
+                                                        <td class="px-4 py-3 text-right" x-text="'$' + Number(row.cost || 0).toFixed(4)"></td>
+                                                        <td class="px-4 py-3 text-right text-xs" x-text="detailRowLastUsed(row)"></td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <div class="glass rounded-2xl overflow-hidden shadow-xl" x-show="reportDetailTimelineRows().length">
+                                    <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800/60 flex items-center justify-between">
+                                        <h3 class="text-sm font-black uppercase tracking-widest">Timeline / Events</h3>
+                                        <button @click="exportCsv(`report-detail-${reportDetail.type || 'timeline'}-timeline.csv`, reportDetailTimelineRows())" class="text-[10px] font-black uppercase text-slate-400 hover:text-luxury-500">CSV</button>
+                                    </div>
+                                    <div class="overflow-x-auto max-h-[320px]">
+                                        <table class="w-full text-left text-sm">
+                                            <thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] uppercase text-slate-400">
+                                                <tr><th class="px-4 py-3">When</th><th class="px-4 py-3">Info</th><th class="px-4 py-3 text-right">Metric</th></tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40">
+                                                <template x-for="row in reportDetailTimelineRows()" :key="detailTimelineKey(row)">
+                                                    <tr>
+                                                        <td class="px-4 py-3 text-xs" x-text="detailTimelineWhen(row)"></td>
+                                                        <td class="px-4 py-3" x-text="detailTimelineInfo(row)"></td>
+                                                        <td class="px-4 py-3 text-right" x-text="detailTimelineMetric(row)"></td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
                     <!-- SYSTEM -->
                     <section x-show="view === 'system'" x-transition>
