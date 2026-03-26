@@ -78,6 +78,8 @@
                             reportsGroups: `/admin/reports/groups?${reportParams.toString()}`,
                             reportsCosts: `/admin/reports/costs?${reportParams.toString()}`,
                             reportsQuotaEvents: `/admin/reports/quota-events?${reportParams.toString()}`,
+                            reportsUserModels: `/admin/reports/user-models?${reportParams.toString()}`,
+                            reportsModelUsers: `/admin/reports/model-users?${reportParams.toString()}`,
                             health: '/admin/health',
                             config: '/admin/config',
                             systemLogs: '/admin/system-logs'
@@ -115,6 +117,8 @@
                             else if (key === 'reportsGroups') this.reports.groups = value;
                             else if (key === 'reportsCosts') this.reports.costs = value;
                             else if (key === 'reportsQuotaEvents') this.reports.quotaEvents = value;
+                            else if (key === 'reportsUserModels') this.reports.userModels = value;
+                            else if (key === 'reportsModelUsers') this.reports.modelUsers = value;
                             else if (key === 'health') this.systemHealth = value;
                             else if (key === 'config') {
                                 this.configView = value.config || {};

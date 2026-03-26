@@ -1256,6 +1256,38 @@ const app = new Elysia()
         const byDay = await db.all(`SELECT DATE(ts) AS day, COUNT(*)::int AS requests, COALESCE(SUM(total_tokens),0)::bigint AS tokens, COALESCE(SUM(total_cost),0)::float AS cost FROM usage_logs WHERE model = $1 AND ts >= $2 GROUP BY DATE(ts) ORDER BY day DESC`, [model, since]);
         return { name: model, since, summary: summary || { model, requests: 0, tokens: 0, cost: 0 }, by_user: byUser, by_day: byDay };
       })
+      .get("/reports/user-models", async ({ query }: any) => {
+        const since = buildSinceDate(query, "30 days");
+        const limit = getLimit(query, 200);
+        const rows = await db.all(`
+          SELECT user_id, model, COUNT(*)::int AS requests,
+                 COALESCE(SUM(total_tokens),0)::bigint AS tokens,
+                 COALESCE(SUM(total_cost),0)::float AS cost,
+                 COALESCE(MAX(ts), NOW()) AS last_used
+          FROM usage_logs
+          WHERE ts >= $1
+          GROUP BY user_id, model
+          ORDER BY cost DESC, tokens DESC, requests DESC
+          LIMIT ${limit}
+        `, [since]);
+        return { range: getReportSince(query, "30 days"), since, rows };
+      })
+      .get("/reports/model-users", async ({ query }: any) => {
+        const since = buildSinceDate(query, "30 days");
+        const limit = getLimit(query, 200);
+        const rows = await db.all(`
+          SELECT model, user_id, COUNT(*)::int AS requests,
+                 COALESCE(SUM(total_tokens),0)::bigint AS tokens,
+                 COALESCE(SUM(total_cost),0)::float AS cost,
+                 COALESCE(MAX(ts), NOW()) AS last_used
+          FROM usage_logs
+          WHERE ts >= $1
+          GROUP BY model, user_id
+          ORDER BY cost DESC, tokens DESC, requests DESC
+          LIMIT ${limit}
+        `, [since]);
+        return { range: getReportSince(query, "30 days"), since, rows };
+      })
       .get("/performance", async ({ query }: any) => {
         const q = query || {};
         const where: string[] = ["started_at >= NOW() - INTERVAL '24 hours'"];

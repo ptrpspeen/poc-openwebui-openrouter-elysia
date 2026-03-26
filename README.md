@@ -115,6 +115,10 @@ Default local ports in this repo's compose file:
 The built-in dashboard is available at `http://localhost:8080`.
 - **Authentication:** Requires the `ADMIN_API_KEY` defined in your configuration.
 - **Features:** Real-time User Hub, Group-to-Policy Mapping, Quota Management, and Usage Audit Logs.
+- **Reports:** Executive summary, users/groups/model cost views, quota event analysis, drill-down detail modal, and dedicated breakdown tables for:
+  - `User Model Breakdown`
+  - `Model User Breakdown`
+- **Last activity visibility:** Drill-down detail views and breakdown tables now surface `last_used` / `last_seen` timing where available from report payloads.
 
 ## 📊 Performance Benchmarks (Middleware)
 
