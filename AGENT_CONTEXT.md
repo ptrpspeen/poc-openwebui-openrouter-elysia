@@ -7,19 +7,50 @@ Use this file as the first orientation point before editing the admin dashboard 
 
 ## High-level structure
 
+### Backend (TypeScript / Bun)
+
 - `middleware/src/index.ts`
-  - Main backend entrypoint
-  - Admin APIs (`/admin/*`)
-  - Reporting APIs (`/admin/reports/*`)
-  - Proxy path (`/v1/*`)
-  - Runtime config loading
-  - Request logging / quota denial logging
+  - App composition (thin — ~100 lines)
+  - Background worker loop + graceful SIGTERM/SIGINT shutdown
+  - Startup sequence
+
+- `middleware/src/services/config.ts`
+  - System log circular buffer (`writeSystemLog`, `systemLogs`)
+  - Mutable `runtimeConfig` object (hot-reloaded via Redis pub/sub)
+  - Config persistence helpers (`ensureConfigStore`, `loadRuntimeConfigFromDb`, `persistConfig`)
+  - `startConfigSubscriber` — Redis pub/sub watcher
+
+- `middleware/src/services/quota.ts`
+  - JWT verification via Web Crypto API (HS256, requires `WEBUI_SECRET_KEY` env var)
+  - In-memory TTL caches for users, groups, policies
+  - Policy evaluation: `evaluateWindow`, `evaluatePolicyLimit`
+  - Policy normalization: `normalizePolicyInput`
+  - Usage tracking: `processUsage`, `logRequestPerformance`
+  - Streaming: `streamWithUsageTracking`
+  - DB helpers: `getUserCached`, `getPolicyCached`, `getUserGroups`, `resolveEffectivePolicy`
+  - Access check: `checkAccess`
+
+- `middleware/src/routes/proxy.ts`
+  - `/v1/*` OpenRouter proxy handler
+  - Request/response header cleaning
+  - Upstream error classification (`classifyUpstreamError`)
+
+- `middleware/src/routes/admin.ts`
+  - `/admin/*` CRUD: users, policies, group-policies, stats, config, health, system-logs
+  - Admin key auth middleware (`x-admin-key` header)
+  - Mounts `reportRoutes` at `/admin/reports`
+
+- `middleware/src/routes/reports.ts`
+  - `/reports/*` analytics endpoints (mounted under `/admin`)
+  - Summary, users, groups, costs, quota-events, drill-downs
+  - User-model and model-user breakdown tables
 
 - `middleware/src/db.ts`
   - PostgreSQL schema init / migrations
-  - Policy columns
-  - Request log columns
-  - Usage / request log table evolution
+  - Policy columns (limit_type, formula support)
+  - Request log columns (denied_reason, denied_category)
+
+### Frontend
 
 - `middleware/public/index.html`
   - Main admin shell HTML
@@ -32,9 +63,7 @@ Use this file as the first orientation point before editing the admin dashboard 
   - Non-report/non-policy generic UI glue
 
 - `middleware/public/js/reports.js`
-  - Reports state
-  - Reports filters
-  - Metric toggle logic
+  - Reports state, filters, metric toggle logic
   - Drill-down modal behavior
   - Detail modal formatting (`last_used` / `last_seen`)
   - Breakdown helpers for `user-models` and `model-users`
@@ -49,7 +78,7 @@ Use this file as the first orientation point before editing the admin dashboard 
 ## If you want to implement X, edit here
 
 ### Reporting / dashboard analytics
-- Backend aggregates/endpoints: `middleware/src/index.ts`
+- Backend aggregates/endpoints: `middleware/src/routes/reports.ts`
 - Report UI behavior/state: `middleware/public/js/reports.js`
 - Report markup/cards/tables: `middleware/public/index.html`
 - Current report-specific additions:
@@ -61,14 +90,20 @@ Use this file as the first orientation point before editing the admin dashboard 
 
 ### Quota policy logic
 - Database schema: `middleware/src/db.ts`
-- Policy evaluation / enforcement: `middleware/src/index.ts`
+- Policy evaluation / enforcement: `middleware/src/services/quota.ts`
+- Policy CRUD API: `middleware/src/routes/admin.ts`
 - Policy editor UI/state/helpers: `middleware/public/js/policies.js`
 - Policy layout/markup: `middleware/public/index.html`
 
 ### User / group views
-- API payloads: `middleware/src/index.ts`
+- API payloads: `middleware/src/routes/admin.ts`
 - HTML sections: `middleware/public/index.html`
 - Shared page glue: `middleware/public/js/admin.js`
+
+### JWT / auth
+- JWT verification logic: `middleware/src/services/quota.ts` (`getUserFromJWT`)
+- Requires `WEBUI_SECRET_KEY` env var matching OpenWebUI's secret
+- If unset: JWT auth is disabled; only `x-openwebui-*` headers accepted
 
 ### Fixing code leak / frontend stability
 - Prefer moving JS out of `index.html`
