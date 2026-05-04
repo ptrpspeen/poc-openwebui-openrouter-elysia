@@ -8,6 +8,44 @@ export const LIMIT_TYPES = new Set(["token", "cost", "formula"]);
 export const PERIOD_TYPES = new Set(["daily", "monthly"]);
 export const FORMULA_KINDS = new Set(["max_ratio", "weighted_ratio"]);
 export const REQUEST_LOG_SAMPLE_RATE = 0.3;
+const USAGE_KEY_TTL_SECONDS = 40 * 24 * 60 * 60;
+const DEFAULT_COMPLETION_RESERVATION_TOKENS = 1024;
+const MODEL_PRICING_CACHE_TTL_MS = 15 * 60 * 1000;
+const HISTORICAL_RATE_CACHE_TTL_MS = 10 * 60 * 1000;
+const COST_RESERVATION_SAFETY_MULTIPLIER = 1.15;
+const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
+
+type ModelPricingRecord = {
+  id: string;
+  pricing?: {
+    prompt?: string;
+    completion?: string;
+    web_search?: string;
+    input_cache_read?: string;
+    input_cache_write?: string;
+  };
+  top_provider?: {
+    max_completion_tokens?: number | null;
+  };
+};
+
+let modelPricingCache: { expiresAt: number; byId: Map<string, ModelPricingRecord> } | null = null;
+const historicalRateCache = new Map<string, { expiresAt: number; costPerToken: number }>();
+
+function modelLookupCandidates(modelName: string) {
+  const raw = String(modelName || "").trim();
+  const candidates = new Set<string>([raw]);
+  if (!raw) return [];
+
+  const segments = raw.split(":");
+  while (segments.length > 1) {
+    segments.pop();
+    candidates.add(segments.join(":"));
+  }
+
+  candidates.add(raw.replace(/:online$/i, ""));
+  return [...candidates].filter(Boolean);
+}
 
 // ─── Generic helpers ──────────────────────────────────────────────────────────
 
@@ -52,11 +90,21 @@ export function usageKeys(userId: string, period: "daily" | "monthly", now = new
   };
 }
 
+export function reservationKeys(userId: string, period: "daily" | "monthly", now = new Date()) {
+  const { dayKey, monthKey } = getBangkokDateParts(now);
+  const suffix = period === "daily" ? dayKey : monthKey;
+  return {
+    tokens: `usage:user:${userId}:${period}:${suffix}:reserved:tokens`,
+    cost: `usage:user:${userId}:${period}:${suffix}:reserved:cost`,
+  };
+}
+
 // ─── Policy description ───────────────────────────────────────────────────────
 
 export function describeLimit(policy: any) {
   return {
     limit_type: policy.limit_type,
+    allowed_models: String(policy.allowed_models || "*"),
     daily_token_limit: parseNumber(policy.daily_token_limit, 0),
     monthly_token_limit: parseNumber(policy.monthly_token_limit, 0),
     daily_cost_limit: parseNumber(policy.daily_cost_limit, 0),
@@ -75,6 +123,208 @@ export function summarizePolicy(policy: any) {
   if (type === "token") return `token d:${dailyToken > 0 ? dailyToken.toLocaleString() : "∞"} / m:${monthlyToken > 0 ? monthlyToken.toLocaleString() : "∞"}`;
   if (type === "cost") return `cost d:${dailyCost > 0 ? `$${dailyCost.toFixed(4)}` : "∞"} / m:${monthlyCost > 0 ? `$${monthlyCost.toFixed(4)}` : "∞"}`;
   return `formula ${policy.formula_kind || "max_ratio"} d:${dailyToken > 0 ? dailyToken.toLocaleString() : "∞"}|${dailyCost > 0 ? `$${dailyCost.toFixed(2)}` : "∞"} m:${monthlyToken > 0 ? monthlyToken.toLocaleString() : "∞"}|${monthlyCost > 0 ? `$${monthlyCost.toFixed(2)}` : "∞"}`;
+}
+
+function splitAllowedModels(input: string) {
+  return input
+    .split(/[\s,]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function modelPatternToRegex(pattern: string) {
+  const escaped = pattern.replace(/[|\\{}()[\]^$+?.]/g, "\\$&").replace(/\*/g, ".*");
+  return new RegExp(`^${escaped}$`, "i");
+}
+
+export function isModelAllowed(policy: any, modelName?: string | null) {
+  const allowedModels = String(policy?.allowed_models || "*").trim();
+  if (!allowedModels || allowedModels === "*") return true;
+  if (!modelName) return false;
+  const candidates = splitAllowedModels(allowedModels);
+  if (candidates.length === 0) return true;
+  return candidates.some((pattern) => modelPatternToRegex(pattern).test(modelName));
+}
+
+function extractTextForReservation(input: any): string[] {
+  if (input == null) return [];
+  if (typeof input === "string") return [input];
+  if (typeof input === "number" || typeof input === "boolean") return [String(input)];
+  if (Array.isArray(input)) return input.flatMap((item) => extractTextForReservation(item));
+  if (typeof input === "object") {
+    return Object.entries(input).flatMap(([key, value]) => {
+      if (["image_url", "audio", "video", "file", "tool_calls", "tools"].includes(key)) return [];
+      return extractTextForReservation(value);
+    });
+  }
+  return [];
+}
+
+export function estimatePromptTokensFromRequestBody(body: any) {
+  const joined = extractTextForReservation({
+    prompt: body?.prompt,
+    input: body?.input,
+    messages: body?.messages,
+  }).join("\n");
+  if (!joined.trim()) return 0;
+  return Math.max(1, Math.ceil(joined.length / 4));
+}
+
+export function estimateUsageFromRequestBody(body: any) {
+  const promptTokens = estimatePromptTokensFromRequestBody(body);
+  const requestedCompletionTokens = Math.max(
+    0,
+    parseNumber(body?.max_tokens, 0),
+    parseNumber(body?.max_completion_tokens, 0),
+    parseNumber(body?.max_output_tokens, 0),
+  );
+  const completionTokens = requestedCompletionTokens > 0
+    ? requestedCompletionTokens
+    : Math.max(DEFAULT_COMPLETION_RESERVATION_TOKENS, promptTokens);
+
+  return {
+    prompt_tokens: promptTokens,
+    completion_tokens: completionTokens,
+    total_tokens: promptTokens + completionTokens,
+    total_cost: 0,
+  };
+}
+
+export function calculateEstimatedCostFromPricing(
+  pricing: { prompt?: string | number; completion?: string | number } | null | undefined,
+  usage: { prompt_tokens: number; completion_tokens: number }
+) {
+  const promptRate = Math.max(0, parseNumber(pricing?.prompt, 0));
+  const completionRate = Math.max(0, parseNumber(pricing?.completion, 0));
+  const raw = usage.prompt_tokens * promptRate + usage.completion_tokens * completionRate;
+  return raw > 0 ? raw * COST_RESERVATION_SAFETY_MULTIPLIER : 0;
+}
+
+function hasExplicitCacheControl(input: any): boolean {
+  if (input == null) return false;
+  if (Array.isArray(input)) return input.some((item) => hasExplicitCacheControl(item));
+  if (typeof input === "object") {
+    if (input.cache_control) return true;
+    return Object.values(input).some((value) => hasExplicitCacheControl(value));
+  }
+  return false;
+}
+
+function estimateCacheWriteTokens(body: any, promptTokens: number) {
+  if (!promptTokens) return 0;
+  if (body?.cache_control) return promptTokens;
+  return hasExplicitCacheControl(body?.messages) ? promptTokens : 0;
+}
+
+function hasWebSearchEnabled(modelName: string, body: any) {
+  if (String(modelName || "").includes(":online")) return true;
+  if (Array.isArray(body?.plugins) && body.plugins.some((plugin: any) => plugin?.id === "web")) return true;
+  if (body?.web_search_options) return true;
+  if (Array.isArray(body?.tools) && body.tools.some((tool: any) => {
+    const name = tool?.function?.name || tool?.name || tool?.id || tool?.type;
+    return ["web_search", "openrouter:web_search", "x_search"].includes(String(name || ""));
+  })) return true;
+  return false;
+}
+
+function estimateWebSearchCost(modelName: string, body: any, pricing: ModelPricingRecord["pricing"]) {
+  if (!hasWebSearchEnabled(modelName, body)) return 0;
+
+  const configuredPlugin = Array.isArray(body?.plugins)
+    ? body.plugins.find((plugin: any) => plugin?.id === "web")
+    : null;
+  const engine = String(configuredPlugin?.engine || "").toLowerCase();
+  const maxResults = Math.max(1, Math.trunc(parseNumber(configuredPlugin?.max_results, 5)));
+  const catalogCharge = Math.max(0, parseNumber(pricing?.web_search, 0));
+
+  if (engine === "exa" || engine === "parallel") {
+    return Math.max(catalogCharge, maxResults * 0.004);
+  }
+
+  if (engine === "firecrawl") {
+    return 0;
+  }
+
+  return catalogCharge;
+}
+
+async function loadModelPricingCatalog(force = false) {
+  if (!force && modelPricingCache && modelPricingCache.expiresAt > Date.now()) {
+    return modelPricingCache.byId;
+  }
+
+  const response = await fetch(OPENROUTER_MODELS_URL, { headers: { accept: "application/json" } });
+  if (!response.ok) throw new Error(`Failed to load model pricing catalog (${response.status})`);
+  const payload: any = await response.json();
+  const rows = Array.isArray(payload?.data) ? payload.data : [];
+  const byId = new Map<string, ModelPricingRecord>();
+  for (const row of rows) {
+    if (row?.id) byId.set(String(row.id), row as ModelPricingRecord);
+    if (row?.canonical_slug) byId.set(String(row.canonical_slug), row as ModelPricingRecord);
+  }
+  modelPricingCache = { expiresAt: Date.now() + MODEL_PRICING_CACHE_TTL_MS, byId };
+  return byId;
+}
+
+async function getHistoricalCostPerToken(modelName: string) {
+  const cached = historicalRateCache.get(modelName);
+  if (cached && cached.expiresAt > Date.now()) return cached.costPerToken;
+
+  const row: any = await db.get(
+    `SELECT
+       COALESCE(SUM(total_cost), 0)::float AS total_cost,
+       COALESCE(SUM(total_tokens), 0)::bigint AS total_tokens
+     FROM usage_logs
+     WHERE model = $1`,
+    [modelName]
+  );
+
+  const totalCost = Math.max(0, parseNumber(row?.total_cost, 0));
+  const totalTokens = Math.max(0, parseNumber(row?.total_tokens, 0));
+  const costPerToken = totalTokens > 0 ? totalCost / totalTokens : 0;
+  historicalRateCache.set(modelName, { expiresAt: Date.now() + HISTORICAL_RATE_CACHE_TTL_MS, costPerToken });
+  return costPerToken;
+}
+
+export async function estimateReservedUsage(modelName: string, body: any) {
+  const usage = estimateUsageFromRequestBody(body);
+  let estimatedCost = 0;
+
+  try {
+    const catalog = await loadModelPricingCatalog();
+    const record = modelLookupCandidates(modelName)
+      .map((candidate) => catalog.get(candidate))
+      .find(Boolean);
+    const promptRate = Math.max(0, parseNumber(record?.pricing?.prompt, 0));
+    const cacheWriteRate = Math.max(0, parseNumber(record?.pricing?.input_cache_write, 0));
+    const providerMax = Math.max(0, parseNumber(record?.top_provider?.max_completion_tokens, 0));
+    if (providerMax > 0 && usage.completion_tokens > providerMax) {
+      usage.completion_tokens = providerMax;
+      usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
+    }
+    estimatedCost = calculateEstimatedCostFromPricing(record?.pricing, usage);
+    const cacheWriteTokens = estimateCacheWriteTokens(body, usage.prompt_tokens);
+    const cacheWriteSurcharge = Math.max(0, cacheWriteRate - promptRate) * cacheWriteTokens;
+    const webSearchCost = estimateWebSearchCost(modelName, body, record?.pricing);
+    estimatedCost += (cacheWriteSurcharge + webSearchCost) * COST_RESERVATION_SAFETY_MULTIPLIER;
+  } catch (e: any) {
+    writeSystemLog("warn", "Failed to fetch model pricing catalog for reservation", {
+      model: modelName,
+      error: e?.message || String(e),
+    });
+  }
+
+  if (estimatedCost <= 0) {
+    const historicalRate = await getHistoricalCostPerToken(modelName);
+    if (historicalRate > 0) {
+      estimatedCost = usage.total_tokens * historicalRate * COST_RESERVATION_SAFETY_MULTIPLIER;
+    }
+  }
+
+  return {
+    ...usage,
+    total_cost: estimatedCost,
+  };
 }
 
 // ─── Policy evaluation ────────────────────────────────────────────────────────
@@ -356,29 +606,105 @@ export async function resolveEffectivePolicy(user: any, groups: string[]) {
 
 // ─── Usage tracking ───────────────────────────────────────────────────────────
 
-export async function getUsageSnapshot(userId: string, period: "daily" | "monthly") {
+export async function getUsageSnapshot(userId: string, period: "daily" | "monthly", includeReservations = false) {
   const keys = usageKeys(userId, period);
-  const usageVals = await redis.mget(keys.tokens, keys.cost);
-  return { tokens: parseNumber(usageVals?.[0], 0), cost: parseNumber(usageVals?.[1], 0) };
-}
-
-export async function getUsageSnapshotAll(userId: string) {
+  const reserved = reservationKeys(userId, period);
+  const lookupKeys = includeReservations
+    ? [keys.tokens, keys.cost, reserved.tokens, reserved.cost]
+    : [keys.tokens, keys.cost];
+  const usageVals = await redis.mget(...lookupKeys);
+  const actualTokens = parseNumber(usageVals?.[0], 0);
+  const actualCost = parseNumber(usageVals?.[1], 0);
+  const reservedTokens = includeReservations ? parseNumber(usageVals?.[2], 0) : 0;
+  const reservedCost = includeReservations ? parseNumber(usageVals?.[3], 0) : 0;
   return {
-    daily: await getUsageSnapshot(userId, "daily"),
-    monthly: await getUsageSnapshot(userId, "monthly"),
+    tokens: actualTokens + reservedTokens,
+    cost: actualCost + reservedCost,
+    actual_tokens: actualTokens,
+    actual_cost: actualCost,
+    reserved_tokens: reservedTokens,
+    reserved_cost: reservedCost,
   };
 }
 
-export async function checkAccess(userId: string): Promise<{ allowed: boolean; reason?: string; groups: string[]; policy?: any; usage?: any; details?: any }> {
+export async function getUsageSnapshotAll(userId: string, includeReservations = false) {
+  return {
+    daily: await getUsageSnapshot(userId, "daily", includeReservations),
+    monthly: await getUsageSnapshot(userId, "monthly", includeReservations),
+  };
+}
+
+export async function checkAccess(userId: string, modelName?: string | null): Promise<{ allowed: boolean; reason?: string; groups: string[]; policy?: any; usage?: any; details?: any }> {
   const user: any = await getUserCached(userId);
   const groups = await getUserGroups(userId);
   if (!user || !user.is_active) return { allowed: false, reason: "User inactive or not found", groups };
   const activePolicyId = await resolveEffectivePolicy(user, groups);
   const policy: any = await getPolicyCached(activePolicyId);
   if (!policy) return { allowed: false, reason: `Policy ${activePolicyId} not found`, groups };
-  const usage = await getUsageSnapshotAll(userId);
+  if (!isModelAllowed(policy, modelName)) {
+    return {
+      allowed: false,
+      reason: `Model '${modelName || "unknown"}' is not allowed by policy`,
+      groups,
+      policy: describeLimit(policy),
+    };
+  }
+  const usage = await getUsageSnapshotAll(userId, true);
   const evaluation = evaluatePolicyLimit(policy, usage);
   return { allowed: evaluation.allowed, reason: evaluation.reason, groups, policy: describeLimit(policy), usage, details: evaluation.details };
+}
+
+export async function reserveUsageEstimate(userId: string, usage: { total_tokens: number; total_cost: number }, now = new Date()) {
+  const daily = reservationKeys(userId, "daily", now);
+  const monthly = reservationKeys(userId, "monthly", now);
+  const totalTokens = Math.max(0, Math.trunc(parseNumber(usage.total_tokens, 0)));
+  const totalCost = Math.max(0, parseNumber(usage.total_cost, 0));
+
+  await redis.multi()
+    .incrby(daily.tokens, totalTokens)
+    .incrby(monthly.tokens, totalTokens)
+    .incrbyfloat(daily.cost, totalCost)
+    .incrbyfloat(monthly.cost, totalCost)
+    .expire(daily.tokens, USAGE_KEY_TTL_SECONDS)
+    .expire(monthly.tokens, USAGE_KEY_TTL_SECONDS)
+    .expire(daily.cost, USAGE_KEY_TTL_SECONDS)
+    .expire(monthly.cost, USAGE_KEY_TTL_SECONDS)
+    .exec();
+
+  return { userId, usage: { total_tokens: totalTokens, total_cost: totalCost }, now };
+}
+
+export async function releaseUsageEstimate(reservation: { userId: string; usage: { total_tokens: number; total_cost: number }; now?: Date } | null | undefined) {
+  if (!reservation) return;
+  const daily = reservationKeys(reservation.userId, "daily", reservation.now);
+  const monthly = reservationKeys(reservation.userId, "monthly", reservation.now);
+  const totalTokens = Math.max(0, Math.trunc(parseNumber(reservation.usage.total_tokens, 0)));
+  const totalCost = Math.max(0, parseNumber(reservation.usage.total_cost, 0));
+
+  await redis.eval(
+    `
+      local tokenDelta = tonumber(ARGV[1])
+      local costDelta = tonumber(ARGV[2])
+      for i = 1, 2 do
+        local current = tonumber(redis.call("GET", KEYS[i]) or "0")
+        local next = current - tokenDelta
+        if next <= 0 then redis.call("DEL", KEYS[i]) else redis.call("SET", KEYS[i], tostring(next)) end
+      end
+      for i = 3, 4 do
+        local current = tonumber(redis.call("GET", KEYS[i]) or "0")
+        local next = current - costDelta
+        if next <= 0 then redis.call("DEL", KEYS[i]) else redis.call("SET", KEYS[i], tostring(next)) end
+      end
+      return 1
+    `,
+    4,
+    daily.tokens,
+    monthly.tokens,
+    daily.cost,
+    monthly.cost,
+    String(totalTokens),
+    String(totalCost),
+  );
 }
 
 export async function processUsage(userId: string | null, model: string, usage: any) {
@@ -392,10 +718,10 @@ export async function processUsage(userId: string | null, model: string, usage: 
     redis.incrby(monthlyKeys.tokens, total),
     redis.incrbyfloat(dailyKeys.cost, cost),
     redis.incrbyfloat(monthlyKeys.cost, cost),
-    redis.expire(dailyKeys.tokens, 3456000),
-    redis.expire(monthlyKeys.tokens, 3456000),
-    redis.expire(dailyKeys.cost, 3456000),
-    redis.expire(monthlyKeys.cost, 3456000),
+    redis.expire(dailyKeys.tokens, USAGE_KEY_TTL_SECONDS),
+    redis.expire(monthlyKeys.tokens, USAGE_KEY_TTL_SECONDS),
+    redis.expire(dailyKeys.cost, USAGE_KEY_TTL_SECONDS),
+    redis.expire(monthlyKeys.cost, USAGE_KEY_TTL_SECONDS),
     redis.lpush("usage_queue", JSON.stringify({
       user_id: userId, model,
       prompt_tokens: parseNumber(usage.prompt_tokens, 0),
@@ -420,6 +746,9 @@ export function logRequestPerformance(args: {
   totalCost?: number;
   deniedReason?: string | null;
   deniedCategory?: string | null;
+  requestedModel?: string | null;
+  resolvedModel?: string | null;
+  routingReason?: string | null;
 }) {
   if (Math.random() > REQUEST_LOG_SAMPLE_RATE) return;
 
@@ -435,6 +764,9 @@ export function logRequestPerformance(args: {
     total_cost: Number(args.totalCost || 0),
     denied_reason: args.deniedReason || null,
     denied_category: args.deniedCategory || null,
+    requested_model: args.requestedModel || null,
+    resolved_model: args.resolvedModel || null,
+    routing_reason: args.routingReason || null,
     started_at: args.startedAt.toISOString(),
     completed_at: args.completedAt.toISOString(),
   };
@@ -445,11 +777,19 @@ export function logRequestPerformance(args: {
 
 // ─── Streaming with usage tracking ───────────────────────────────────────────
 
-export async function* streamWithUsageTracking(response: Response, userId: string | null): AsyncGenerator<Uint8Array> {
+export async function* streamWithUsageTracking(
+  response: Response,
+  userId: string | null,
+  hooks?: {
+    onUsage?: (data: any) => Promise<void> | void;
+    onMissingUsage?: () => Promise<void> | void;
+  }
+): AsyncGenerator<Uint8Array> {
   const reader = response.body?.getReader();
   if (!reader) return;
   const decoder = new TextDecoder();
   let buffer = "";
+  let sawUsage = false;
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -467,7 +807,11 @@ export async function* streamWithUsageTracking(response: Response, userId: strin
             if (dataStr && dataStr !== "[DONE]") {
               try {
                 const data = JSON.parse(dataStr);
-                if (data.usage) await processUsage(userId, data.model || "", data.usage);
+                if (data.usage) {
+                  sawUsage = true;
+                  await processUsage(userId, data.model || "", data.usage);
+                  await hooks?.onUsage?.(data);
+                }
               } catch (e) {
                 console.debug("[stream] Failed to parse SSE chunk:", e);
               }
@@ -477,6 +821,9 @@ export async function* streamWithUsageTracking(response: Response, userId: strin
       } catch { }
     }
   } finally {
+    if (!sawUsage) {
+      await hooks?.onMissingUsage?.();
+    }
     reader.releaseLock();
   }
 }

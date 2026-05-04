@@ -10,11 +10,13 @@
                 systemLogs: [],
                 configView: {},
                 configDraft: {},
+                virtualModelsDraft: [],
+                virtualRouterPolicyDraft: { premium_model_ids: [], premium_allowed_groups: [], premium_daily_cost_limit: 0, premium_monthly_cost_limit: 0 },
                 errors: {},
                 menuItems: [{ id: 'overview', label: 'Command Center', icon: 'fa-solid fa-gauge-high' }, { id: 'users', label: 'User Hub', icon: 'fa-solid fa-user-gear' }, { id: 'groups', label: 'Group Logic', icon: 'fa-solid fa-sitemap' }, { id: 'policies', label: 'Quota Policies', icon: 'fa-solid fa-shield-halved' }, { id: 'reports', label: 'Reports', icon: 'fa-solid fa-chart-column' }, { id: 'system', label: 'System Health', icon: 'fa-solid fa-heart-pulse' }, { id: 'logs', label: 'Usage Logs', icon: 'fa-solid fa-receipt' }],
                 stats: { total_users: 0, total_policies: 0, total_tokens: 0, total_cost: 0, total_requests: 0, last_24h: { tokens: 0, cost: 0, requests: 0, avg_latency_ms: 0, p95_latency_ms: 0, max_latency_ms: 0 }, top_models: [], top_users: [] },
                 performance: { summary: {}, recent: [] },
-                performanceFilter: { user_id: '', model: '', path: '', status: '' },
+                performanceFilter: { user_id: '', model: '', requested_model: '', resolved_model: '', routing_reason: '', path: '', status: '' },
                 newPolicy: { id: '', name: '', limit_type: 'token', scope_period: 'monthly', daily_token_limit: 50000, monthly_token_limit: 1000000, daily_cost_limit: 0, monthly_cost_limit: 0, token_limit: 1000000, cost_limit: 0, formula_kind: 'max_ratio', formula_config: { threshold: 1, token_weight: 0.5, cost_weight: 0.5 }, allowed_models: '*' },
                 policyPreview: { usage: { daily: { tokens: 1000, cost: 0.1 }, monthly: { tokens: 10000, cost: 1 } }, result: null },
                 newGroupPolicy: { group_name: '', policy_id: '', priority: 0 },
@@ -121,11 +123,76 @@
                             else if (key === 'reportsModelUsers') this.reports.modelUsers = value;
                             else if (key === 'health') this.systemHealth = value;
                             else if (key === 'config') {
-                                this.configView = value.config || {};
-                                this.configDraft = { ...(value.config || {}) };
+                                this.configView = value.masked || {};
+                                this.configDraft = { ...(value.masked || {}) };
+                                this.loadVirtualRouterDrafts();
                             } else if (key === 'systemLogs') this.systemLogs = value.logs || [];
                         }
                     } catch (e) { console.error(e); } finally { this.loading = false; }
+                },
+                parseJsonConfigValue(key, fallback) {
+                    const raw = this.configDraft?.[key];
+                    if (!raw) return fallback;
+                    try { return JSON.parse(raw); } catch { return fallback; }
+                },
+                loadVirtualRouterDrafts() {
+                    this.virtualModelsDraft = this.parseJsonConfigValue('VIRTUAL_MODELS_JSON', []).map((model) => ({
+                        id: model.id || '',
+                        name: model.name || '',
+                        description: model.description || '',
+                        strategy: model.strategy || 'balanced',
+                        candidatesText: Array.isArray(model.candidates) ? model.candidates.join('\n') : '',
+                    }));
+                    const policy = this.parseJsonConfigValue('VIRTUAL_ROUTER_CONFIG_JSON', {
+                        premium_model_ids: [], premium_allowed_groups: [], premium_daily_cost_limit: 0, premium_monthly_cost_limit: 0,
+                    });
+                    this.virtualRouterPolicyDraft = {
+                        premium_model_ids: Array.isArray(policy.premium_model_ids) ? policy.premium_model_ids.join('\n') : '',
+                        premium_allowed_groups: Array.isArray(policy.premium_allowed_groups) ? policy.premium_allowed_groups.join('\n') : '',
+                        premium_daily_cost_limit: Number(policy.premium_daily_cost_limit || 0),
+                        premium_monthly_cost_limit: Number(policy.premium_monthly_cost_limit || 0),
+                    };
+                },
+                addVirtualModelDraft() {
+                    this.virtualModelsDraft.push({ id: '', name: '', description: '', strategy: 'balanced', candidatesText: '' });
+                },
+                removeVirtualModelDraft(index) {
+                    this.virtualModelsDraft.splice(index, 1);
+                },
+                syncVirtualRouterDraftsToConfig() {
+                    this.configDraft.VIRTUAL_MODELS_JSON = JSON.stringify(this.virtualModelsDraft.map((model) => ({
+                        id: String(model.id || '').trim(),
+                        name: String(model.name || '').trim(),
+                        description: String(model.description || '').trim(),
+                        strategy: String(model.strategy || 'balanced').trim(),
+                        candidates: String(model.candidatesText || '').split(/\n+/).map(v => v.trim()).filter(Boolean),
+                    })).filter(model => model.id && model.name && model.description && model.candidates.length), null, 2);
+                    this.configDraft.VIRTUAL_ROUTER_CONFIG_JSON = JSON.stringify({
+                        premium_model_ids: String(this.virtualRouterPolicyDraft.premium_model_ids || '').split(/\n+/).map(v => v.trim()).filter(Boolean),
+                        premium_allowed_groups: String(this.virtualRouterPolicyDraft.premium_allowed_groups || '').split(/\n+/).map(v => v.trim()).filter(Boolean),
+                        premium_daily_cost_limit: Number(this.virtualRouterPolicyDraft.premium_daily_cost_limit || 0),
+                        premium_monthly_cost_limit: Number(this.virtualRouterPolicyDraft.premium_monthly_cost_limit || 0),
+                    }, null, 2);
+                },
+                async saveConfig() {
+                    this.syncVirtualRouterDraftsToConfig();
+                    const updates = {};
+                    Object.keys(this.configDraft || {}).forEach((key) => {
+                        if (this.configDraft[key] !== this.configView[key]) updates[key] = this.configDraft[key];
+                    });
+                    if (Object.keys(updates).length === 0) return;
+                    const response = await fetch('/admin/config', {
+                        method: 'POST',
+                        headers: { 'x-admin-key': this.adminKey, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ config: updates })
+                    });
+                    if (!response.ok) throw new Error(await response.text());
+                    await this.refreshAll();
+                },
+                applyPerformanceFilter() { this.refreshAll(); },
+                resetPerformanceFilter() {
+                    this.performanceFilter = { user_id: '', model: '', requested_model: '', resolved_model: '', routing_reason: '', path: '', status: '' };
+                    this.refreshAll();
                 },
                 async toggleUserStatus(user) { await fetch(`/admin/users/${user.id}`, { method: 'PATCH', headers: { 'x-admin-key': this.adminKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: !user.is_active }) }); await this.refreshAll(); },
                 async updateUserPolicy(user) { await fetch(`/admin/users/${user.id}`, { method: 'PATCH', headers: { 'x-admin-key': this.adminKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ policy_id: user.policy_id }) }); await this.refreshAll(); },

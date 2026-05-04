@@ -8,6 +8,7 @@ import {
   CONFIG_KEYS,
   CONFIG_SYNC_CHANNEL,
   maskConfigValue,
+  isSensitiveConfigKey,
   validateConfigMap,
   persistConfig,
   loadRuntimeConfigFromDb,
@@ -269,6 +270,9 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
 
     if (q.user_id) { params.push(`%${q.user_id}%`); where.push(`user_id ILIKE $${params.length}`); }
     if (q.model) { params.push(`%${q.model}%`); where.push(`model ILIKE $${params.length}`); }
+    if (q.requested_model) { params.push(`%${q.requested_model}%`); where.push(`requested_model ILIKE $${params.length}`); }
+    if (q.resolved_model) { params.push(`%${q.resolved_model}%`); where.push(`resolved_model ILIKE $${params.length}`); }
+    if (q.routing_reason) { params.push(`%${q.routing_reason}%`); where.push(`routing_reason ILIKE $${params.length}`); }
     if (q.path) { params.push(`%${q.path}%`); where.push(`path ILIKE $${params.length}`); }
     if (q.status) { params.push(Number(q.status)); where.push(`status = $${params.length}`); }
 
@@ -288,7 +292,7 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
     `, params);
 
     const recent = await db.all(`
-      SELECT id, user_id, model, path, method, status, is_stream, latency_ms, total_cost, started_at, completed_at
+      SELECT id, user_id, model, requested_model, resolved_model, routing_reason, path, method, status, is_stream, latency_ms, total_cost, started_at, completed_at
       FROM request_logs ${whereSql}
       ORDER BY id DESC LIMIT 200
     `, params);
@@ -299,17 +303,17 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
   // ── Config ─────────────────────────────────────────────────────────────────
   .get("/config", async () => {
     const rows = await db.all("SELECT key, value, updated_at FROM system_config WHERE key = ANY($1)", [CONFIG_KEYS]);
-    const config: Record<string, string> = {};
     const masked: Record<string, string> = {};
+    const sensitiveKeys: string[] = [];
     let updatedAt: string | null = null;
     for (const row of rows) {
-      config[row.key] = row.value || "";
       masked[row.key] = maskConfigValue(row.key, row.value);
+      if (isSensitiveConfigKey(row.key)) sensitiveKeys.push(row.key);
       if (!updatedAt || new Date(row.updated_at).getTime() > new Date(updatedAt).getTime()) {
         updatedAt = row.updated_at;
       }
     }
-    return { config, masked, updatedAt };
+    return { masked, sensitiveKeys, updatedAt };
   })
 
   .post("/config", async ({ body, set }: any) => {
@@ -322,7 +326,12 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
 
     for (const key of Object.keys(updates)) {
       if ((CONFIG_KEYS as readonly string[]).includes(key)) {
-        merged[key] = String(updates[key] ?? "");
+        const incomingValue = String(updates[key] ?? "");
+        const currentValue = merged[key] || "";
+        if (isSensitiveConfigKey(key) && incomingValue === maskConfigValue(key, currentValue)) {
+          continue;
+        }
+        merged[key] = incomingValue;
         changed.push(key);
       }
     }
