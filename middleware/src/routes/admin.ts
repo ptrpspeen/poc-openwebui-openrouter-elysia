@@ -29,6 +29,7 @@ import {
   REQUEST_LOG_SAMPLE_RATE,
 } from "../services/quota";
 import { reportRoutes } from "./reports";
+import { parseVirtualModelsConfig, resolveVirtualModelWithDefinitions } from "../services/router";
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 
@@ -183,6 +184,42 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
       policy: describeLimit(policy),
       usage,
       details: evaluation.details,
+    };
+  })
+
+  // ── Virtual router preview ────────────────────────────────────────────────
+  .post("/router/preview", async ({ body, set }: any) => {
+    let definitions;
+    try {
+      definitions = parseVirtualModelsConfig(String(body?.virtualModelsJson || runtimeConfig.VIRTUAL_MODELS_JSON || ""));
+    } catch (e: any) {
+      set.status = 400;
+      return { success: false, error: e?.message || String(e) };
+    }
+
+    const requestedModel = String(body?.model || definitions[0]?.id || "").trim();
+    if (!requestedModel) {
+      set.status = 400;
+      return { success: false, error: "Set a model to preview" };
+    }
+
+    const requestBody = {
+      model: requestedModel,
+      messages: Array.isArray(body?.messages) ? body.messages : [
+        { role: "user", content: String(body?.prompt || "") },
+      ],
+      max_tokens: parseNumber(body?.max_tokens, 1024),
+      tools: body?.tools,
+    };
+    const decision = resolveVirtualModelWithDefinitions(requestedModel, requestBody, definitions);
+    return {
+      success: true,
+      requested_model: decision.requestedModel,
+      resolved_model: decision.resolvedModel,
+      used_virtual_model: decision.usedVirtualModel,
+      routing_reason: decision.reason,
+      signals: decision.signals,
+      candidates: definitions.find((model) => model.id === requestedModel)?.candidates || [],
     };
   })
 

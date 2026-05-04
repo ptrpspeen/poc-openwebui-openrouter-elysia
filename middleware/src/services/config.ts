@@ -129,6 +129,49 @@ export function validateConfigMap(input: Record<string, string>) {
   if (missingRequired.length) {
     throw new Error(`Missing required config: ${missingRequired.join(", ")}`);
   }
+
+  validateVirtualModelsJson(input.VIRTUAL_MODELS_JSON || "");
+  validateVirtualRouterConfigJson(input.VIRTUAL_ROUTER_CONFIG_JSON || "");
+}
+
+function parseJsonConfigValue(raw: string, key: string) {
+  if (!raw || !raw.trim()) return null;
+  try { return JSON.parse(raw); } catch (e: any) { throw new Error(`${key} is invalid JSON: ${e?.message || String(e)}`); }
+}
+
+function validateVirtualModelsJson(raw: string) {
+  const parsed = parseJsonConfigValue(raw, "VIRTUAL_MODELS_JSON");
+  if (parsed == null) return;
+  if (!Array.isArray(parsed)) throw new Error("VIRTUAL_MODELS_JSON must be an array");
+  if (!parsed.length) throw new Error("VIRTUAL_MODELS_JSON must contain at least one virtual model");
+  const seen = new Set<string>();
+  const strategies = new Set(["cheap_first", "balanced", "premium", "code", "long_context"]);
+  parsed.forEach((model: any, index: number) => {
+    const label = model?.id || `model #${index + 1}`;
+    const id = String(model?.id || "").trim();
+    if (!id) throw new Error(`${label}: id is required`);
+    if (seen.has(id)) throw new Error(`${id}: duplicate virtual model id`);
+    seen.add(id);
+    if (!String(model?.name || "").trim()) throw new Error(`${label}: name is required`);
+    if (!String(model?.description || "").trim()) throw new Error(`${label}: description is required`);
+    if (!strategies.has(String(model?.strategy || "").trim())) throw new Error(`${label}: invalid strategy`);
+    if (!Array.isArray(model?.candidates) || model.candidates.map((v: any) => String(v || "").trim()).filter(Boolean).length === 0) {
+      throw new Error(`${label}: add at least one candidate model`);
+    }
+  });
+}
+
+function validateVirtualRouterConfigJson(raw: string) {
+  const parsed = parseJsonConfigValue(raw, "VIRTUAL_ROUTER_CONFIG_JSON");
+  if (parsed == null) return;
+  if (typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("VIRTUAL_ROUTER_CONFIG_JSON must be an object");
+  for (const key of ["premium_model_ids", "premium_allowed_groups"]) {
+    if (parsed[key] != null && !Array.isArray(parsed[key])) throw new Error(`${key} must be an array`);
+  }
+  for (const key of ["premium_daily_cost_limit", "premium_monthly_cost_limit"]) {
+    const value = Number(parsed[key] || 0);
+    if (!Number.isFinite(value) || value < 0) throw new Error(`${key} must be a non-negative number`);
+  }
 }
 
 // ─── Config persistence ───────────────────────────────────────────────────────

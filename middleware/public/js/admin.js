@@ -4,7 +4,7 @@
             return {
                 ...reportsModule,
                 ...policiesModule,
-                view: 'overview', darkMode: localStorage.getItem('theme') === 'dark', adminKey: localStorage.getItem('adminKey') || '', keyInput: '', loading: false,
+                view: 'overview', systemTab: 'router', darkMode: localStorage.getItem('theme') === 'dark', adminKey: localStorage.getItem('adminKey') || '', keyInput: '', loading: false,
                 users: [], policies: [], groupPolicies: [], webuiGroups: [], usage: [],
                 systemHealth: { status: 'unknown', checks: {} },
                 systemLogs: [],
@@ -12,8 +12,23 @@
                 configDraft: {},
                 virtualModelsDraft: [],
                 virtualRouterPolicyDraft: { premium_model_ids: [], premium_allowed_groups: [], premium_daily_cost_limit: 0, premium_monthly_cost_limit: 0 },
+                configValidation: { errors: [], warnings: [], success: '' },
+                routePreview: {
+                    model: 'virtual/auto-balanced',
+                    prompt: 'Please analyze this system architecture, compare tradeoffs, and identify likely root causes.',
+                    max_tokens: 1024,
+                    result: null,
+                    error: '',
+                    loading: false,
+                },
                 errors: {},
-                menuItems: [{ id: 'overview', label: 'Command Center', icon: 'fa-solid fa-gauge-high' }, { id: 'users', label: 'User Hub', icon: 'fa-solid fa-user-gear' }, { id: 'groups', label: 'Group Logic', icon: 'fa-solid fa-sitemap' }, { id: 'policies', label: 'Quota Policies', icon: 'fa-solid fa-shield-halved' }, { id: 'reports', label: 'Reports', icon: 'fa-solid fa-chart-column' }, { id: 'system', label: 'System Health', icon: 'fa-solid fa-heart-pulse' }, { id: 'logs', label: 'Usage Logs', icon: 'fa-solid fa-receipt' }],
+                menuItems: [{ id: 'overview', label: 'Command Center', icon: 'fa-solid fa-gauge-high' }, { id: 'users', label: 'User Hub', icon: 'fa-solid fa-user-gear' }, { id: 'groups', label: 'Group Logic', icon: 'fa-solid fa-sitemap' }, { id: 'policies', label: 'Quota Policies', icon: 'fa-solid fa-shield-halved' }, { id: 'reports', label: 'Reports', icon: 'fa-solid fa-chart-column' }, { id: 'system', label: 'System', icon: 'fa-solid fa-sliders' }, { id: 'logs', label: 'Usage Logs', icon: 'fa-solid fa-receipt' }],
+                systemTabs: [
+                    { id: 'router', label: 'Router', icon: 'fa-solid fa-route', hint: 'Virtual models, premium gate, route preview' },
+                    { id: 'health', label: 'Health', icon: 'fa-solid fa-heart-pulse', hint: 'Runtime dependency status' },
+                    { id: 'config', label: 'Config', icon: 'fa-solid fa-code', hint: 'Raw config editor' },
+                    { id: 'runtime', label: 'Logs', icon: 'fa-solid fa-terminal', hint: 'System runtime logs' },
+                ],
                 stats: { total_users: 0, total_policies: 0, total_tokens: 0, total_cost: 0, total_requests: 0, last_24h: { tokens: 0, cost: 0, requests: 0, avg_latency_ms: 0, p95_latency_ms: 0, max_latency_ms: 0 }, top_models: [], top_users: [] },
                 performance: { summary: {}, recent: [] },
                 performanceFilter: { user_id: '', model: '', requested_model: '', resolved_model: '', routing_reason: '', path: '', status: '' },
@@ -135,6 +150,58 @@
                     if (!raw) return fallback;
                     try { return JSON.parse(raw); } catch { return fallback; }
                 },
+                parseLines(value) {
+                    return String(value || '').split(/\n+/).map(v => v.trim()).filter(Boolean);
+                },
+                validateVirtualRouterDrafts({ requirePrompt = false } = {}) {
+                    const errors = [];
+                    const warnings = [];
+                    const strategies = new Set(['cheap_first', 'balanced', 'premium', 'code', 'long_context']);
+                    const seen = new Set();
+                    const ids = [];
+
+                    this.virtualModelsDraft.forEach((model, index) => {
+                        const label = model.id || `model #${index + 1}`;
+                        const id = String(model.id || '').trim();
+                        const candidates = this.parseLines(model.candidatesText);
+                        if (!id) errors.push(`${label}: id is required`);
+                        else {
+                            if (!id.startsWith('virtual/')) warnings.push(`${id}: virtual model ids should usually start with virtual/`);
+                            if (seen.has(id)) errors.push(`${id}: duplicate virtual model id`);
+                            seen.add(id);
+                            ids.push(id);
+                        }
+                        if (!String(model.name || '').trim()) errors.push(`${label}: display name is required`);
+                        if (!String(model.description || '').trim()) errors.push(`${label}: description is required`);
+                        if (!strategies.has(String(model.strategy || '').trim())) errors.push(`${label}: invalid strategy`);
+                        if (!candidates.length) errors.push(`${label}: add at least one candidate model`);
+                        if (candidates.some(candidate => candidate.startsWith('virtual/'))) warnings.push(`${label}: candidates should be real upstream models, not virtual models`);
+                    });
+
+                    if (!ids.length) errors.push('At least one virtual model is required');
+                    const premiumIds = this.parseLines(this.virtualRouterPolicyDraft.premium_model_ids);
+                    premiumIds.forEach((id) => { if (!seen.has(id)) errors.push(`Premium model id ${id} does not exist in virtual models`); });
+                    ['premium_daily_cost_limit', 'premium_monthly_cost_limit'].forEach((key) => {
+                        const value = Number(this.virtualRouterPolicyDraft[key] || 0);
+                        if (!Number.isFinite(value) || value < 0) errors.push(`${key} must be a non-negative number`);
+                    });
+
+                    if (this.configDraft.VIRTUAL_MODELS_JSON) {
+                        try { JSON.parse(this.configDraft.VIRTUAL_MODELS_JSON); } catch (e) { errors.push(`VIRTUAL_MODELS_JSON is invalid JSON: ${e.message}`); }
+                    }
+                    if (this.configDraft.VIRTUAL_ROUTER_CONFIG_JSON) {
+                        try { JSON.parse(this.configDraft.VIRTUAL_ROUTER_CONFIG_JSON); } catch (e) { errors.push(`VIRTUAL_ROUTER_CONFIG_JSON is invalid JSON: ${e.message}`); }
+                    }
+
+                    if (requirePrompt) {
+                        if (!String(this.routePreview.prompt || '').trim()) errors.push('Preview prompt is required');
+                        if (!String(this.routePreview.model || '').trim()) errors.push('Preview requested model is required');
+                        const maxTokens = Number(this.routePreview.max_tokens || 0);
+                        if (!Number.isFinite(maxTokens) || maxTokens <= 0) errors.push('Preview max tokens must be greater than 0');
+                    }
+
+                    return { ok: errors.length === 0, errors, warnings };
+                },
                 loadVirtualRouterDrafts() {
                     this.virtualModelsDraft = this.parseJsonConfigValue('VIRTUAL_MODELS_JSON', []).map((model) => ({
                         id: model.id || '',
@@ -143,6 +210,9 @@
                         strategy: model.strategy || 'balanced',
                         candidatesText: Array.isArray(model.candidates) ? model.candidates.join('\n') : '',
                     }));
+                    if (!this.virtualModelsDraft.some((model) => model.id === this.routePreview.model)) {
+                        this.routePreview.model = this.virtualModelsDraft[0]?.id || 'virtual/auto-balanced';
+                    }
                     const policy = this.parseJsonConfigValue('VIRTUAL_ROUTER_CONFIG_JSON', {
                         premium_model_ids: [], premium_allowed_groups: [], premium_daily_cost_limit: 0, premium_monthly_cost_limit: 0,
                     });
@@ -165,16 +235,22 @@
                         name: String(model.name || '').trim(),
                         description: String(model.description || '').trim(),
                         strategy: String(model.strategy || 'balanced').trim(),
-                        candidates: String(model.candidatesText || '').split(/\n+/).map(v => v.trim()).filter(Boolean),
+                        candidates: this.parseLines(model.candidatesText),
                     })).filter(model => model.id && model.name && model.description && model.candidates.length), null, 2);
                     this.configDraft.VIRTUAL_ROUTER_CONFIG_JSON = JSON.stringify({
-                        premium_model_ids: String(this.virtualRouterPolicyDraft.premium_model_ids || '').split(/\n+/).map(v => v.trim()).filter(Boolean),
-                        premium_allowed_groups: String(this.virtualRouterPolicyDraft.premium_allowed_groups || '').split(/\n+/).map(v => v.trim()).filter(Boolean),
+                        premium_model_ids: this.parseLines(this.virtualRouterPolicyDraft.premium_model_ids),
+                        premium_allowed_groups: this.parseLines(this.virtualRouterPolicyDraft.premium_allowed_groups),
                         premium_daily_cost_limit: Number(this.virtualRouterPolicyDraft.premium_daily_cost_limit || 0),
                         premium_monthly_cost_limit: Number(this.virtualRouterPolicyDraft.premium_monthly_cost_limit || 0),
                     }, null, 2);
                 },
                 async saveConfig() {
+                    this.configValidation = { errors: [], warnings: [], success: '' };
+                    const validation = this.validateVirtualRouterDrafts();
+                    if (!validation.ok) {
+                        this.configValidation = { ...validation, success: '' };
+                        return;
+                    }
                     this.syncVirtualRouterDraftsToConfig();
                     const updates = {};
                     Object.keys(this.configDraft || {}).forEach((key) => {
@@ -187,7 +263,36 @@
                         body: JSON.stringify({ config: updates })
                     });
                     if (!response.ok) throw new Error(await response.text());
+                    this.configValidation = { errors: [], warnings: validation.warnings, success: 'Config saved successfully' };
                     await this.refreshAll();
+                },
+                async previewRouteDecision() {
+                    const validation = this.validateVirtualRouterDrafts({ requirePrompt: true });
+                    this.configValidation = { ...validation, success: '' };
+                    if (!validation.ok) return;
+                    this.syncVirtualRouterDraftsToConfig();
+                    this.routePreview.loading = true;
+                    this.routePreview.error = '';
+                    this.routePreview.result = null;
+                    try {
+                        const response = await fetch('/admin/router/preview', {
+                            method: 'POST',
+                            headers: { 'x-admin-key': this.adminKey, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                model: this.routePreview.model,
+                                prompt: this.routePreview.prompt,
+                                max_tokens: Number(this.routePreview.max_tokens || 1024),
+                                virtualModelsJson: this.configDraft.VIRTUAL_MODELS_JSON,
+                            }),
+                        });
+                        const payload = await response.json().catch(() => null);
+                        if (!response.ok || !payload?.success) throw new Error(payload?.error || await response.text());
+                        this.routePreview.result = payload;
+                    } catch (error) {
+                        this.routePreview.error = String(error?.message || error);
+                    } finally {
+                        this.routePreview.loading = false;
+                    }
                 },
                 applyPerformanceFilter() { this.refreshAll(); },
                 resetPerformanceFilter() {

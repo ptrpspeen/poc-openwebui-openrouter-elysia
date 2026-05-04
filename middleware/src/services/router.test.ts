@@ -7,7 +7,9 @@ import {
   getVirtualModels,
   injectVirtualModelsIntoCatalog,
   isVirtualModel,
+  parseVirtualModelsConfig,
   resolveVirtualModel,
+  resolveVirtualModelWithDefinitions,
 } from "./router";
 
 const originalVirtualModelsJson = runtimeConfig.VIRTUAL_MODELS_JSON;
@@ -82,6 +84,27 @@ describe("router helpers", () => {
 
     expect(resolution.resolvedModel).toBe("anthropic/claude-3.7-sonnet");
     expect(resolution.reason).toContain("coding_task");
+  });
+
+  it("previews routing against unsaved virtual model definitions", () => {
+    const definitions = parseVirtualModelsConfig(JSON.stringify([
+      {
+        id: "virtual/custom-code",
+        name: "Custom Code",
+        description: "Preview custom route",
+        strategy: "code",
+        candidates: ["cheap/code-model", "cheap/general-model", "premium/code-model"],
+      },
+    ]));
+
+    const resolution = resolveVirtualModelWithDefinitions("virtual/custom-code", {
+      messages: [{ role: "user", content: "Debug this backend TypeScript API, review the security architecture, and explain the root cause." }],
+    }, definitions);
+
+    expect(resolution.usedVirtualModel).toBe(true);
+    expect(resolution.resolvedModel).toBe("premium/code-model");
+    expect(resolution.reason).toContain("coding_task");
+    expect(resolution.signals.promptTokens).toBeGreaterThan(0);
   });
 
   it("blocks premium virtual model when group gate fails", () => {

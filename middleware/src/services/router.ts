@@ -108,15 +108,19 @@ function normalizeVirtualModel(input: any): VirtualModelDefinition | null {
   };
 }
 
-export function getVirtualModels(): VirtualModelDefinition[] {
-  const parsed = parseJsonConfig<any[]>(runtimeConfig.VIRTUAL_MODELS_JSON, DEFAULT_VIRTUAL_MODELS, "VIRTUAL_MODELS_JSON");
+export function parseVirtualModelsConfig(raw: string, fallback = DEFAULT_VIRTUAL_MODELS): VirtualModelDefinition[] {
+  const parsed = parseJsonConfig<any[]>(raw, fallback, "VIRTUAL_MODELS_JSON");
   if (!Array.isArray(parsed)) return DEFAULT_VIRTUAL_MODELS;
   const normalized = parsed.map((item) => normalizeVirtualModel(item)).filter(Boolean) as VirtualModelDefinition[];
-  return normalized.length > 0 ? normalized : DEFAULT_VIRTUAL_MODELS;
+  return normalized.length > 0 ? normalized : fallback;
 }
 
-export function getVirtualModelMap() {
-  return new Map(getVirtualModels().map((model) => [model.id, model]));
+export function getVirtualModels(): VirtualModelDefinition[] {
+  return parseVirtualModelsConfig(runtimeConfig.VIRTUAL_MODELS_JSON, DEFAULT_VIRTUAL_MODELS);
+}
+
+export function getVirtualModelMap(models = getVirtualModels()) {
+  return new Map(models.map((model) => [model.id, model]));
 }
 
 export function getRouterPolicyConfig(): RouterPolicyConfig {
@@ -297,14 +301,15 @@ export async function checkVirtualModelAccess(userId: string | null, requestedMo
   return evaluatePremiumModelAccess(requestedModel, groups, usage, premiumConfig);
 }
 
-export function resolveVirtualModel(modelName: string, body: any) {
-  const definition = getVirtualModelMap().get(modelName);
+export function resolveVirtualModelWithDefinitions(modelName: string, body: any, definitions: VirtualModelDefinition[]) {
+  const definition = getVirtualModelMap(definitions).get(modelName);
   if (!definition) {
     return {
       requestedModel: modelName,
       resolvedModel: modelName,
       usedVirtualModel: false,
       reason: "raw_model_passthrough",
+      signals: deriveTaskSignals(body),
     };
   }
 
@@ -322,5 +327,10 @@ export function resolveVirtualModel(modelName: string, body: any) {
     resolvedModel,
     usedVirtualModel: true,
     reason: reasons.join(","),
+    signals,
   };
+}
+
+export function resolveVirtualModel(modelName: string, body: any) {
+  return resolveVirtualModelWithDefinitions(modelName, body, getVirtualModels());
 }

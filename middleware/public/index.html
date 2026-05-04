@@ -472,22 +472,43 @@
                     </div>
 
                     <!-- SYSTEM -->
-                    <section x-show="view === 'system'" x-transition>
-                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-                            <div class="glass p-6 rounded-2xl shadow-xl">
-                                <h3 class="text-sm font-black uppercase tracking-widest mb-4">Service Health</h3>
-                                <div class="text-xs mb-3">Overall: <span class="font-bold" :class="systemHealth.status === 'ok' ? 'text-emerald-500' : 'text-amber-500'" x-text="systemHealth.status"></span></div>
-                                <template x-for="(check, name) in systemHealth.checks" :key="name">
-                                    <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 py-2 text-sm">
-                                        <span x-text="name"></span>
-                                        <span :class="check.ok ? 'text-emerald-500' : 'text-rose-500'" x-text="check.ok ? 'OK' : 'ERROR'"></span>
-                                    </div>
+                    <section x-show="view === 'system'" x-transition class="space-y-6">
+                        <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+                            <div>
+                                <p class="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-500">System Workspace</p>
+                                <h2 class="text-2xl font-black text-slate-900 dark:text-white mt-1">Admin Control Panel</h2>
+                                <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Focused tools for router tuning, runtime health, config, and logs.</p>
+                            </div>
+                            <div class="grid grid-cols-2 md:flex gap-2">
+                                <template x-for="tab in systemTabs" :key="tab.id">
+                                    <button @click="systemTab = tab.id" class="px-4 py-3 rounded-2xl border text-left transition-all" :class="systemTab === tab.id ? 'luxury-gradient text-white border-transparent shadow-lg' : 'bg-white/60 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:border-indigo-300'">
+                                        <div class="flex items-center gap-2 text-xs font-black uppercase tracking-widest"><i :class="tab.icon"></i><span x-text="tab.label"></span></div>
+                                        <div class="hidden md:block text-[10px] opacity-75 mt-1 normal-case tracking-normal" x-text="tab.hint"></div>
+                                    </button>
                                 </template>
                             </div>
-                            <div class="glass p-6 rounded-2xl shadow-xl lg:col-span-2">
-                                <div class="flex items-center justify-between mb-4">
-                                    <h3 class="text-sm font-black uppercase tracking-widest">Virtual Router Control</h3>
-                                    <button @click="addVirtualModelDraft" class="px-3 py-2 rounded-lg text-[10px] font-black uppercase border border-slate-300 dark:border-slate-700">Add Virtual Model</button>
+                        </div>
+                        <div x-show="systemTab === 'router'" x-transition class="glass p-6 rounded-2xl shadow-xl">
+                                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                                    <div>
+                                        <h3 class="text-sm font-black uppercase tracking-widest">Virtual Router Control</h3>
+                                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Edit → validate → preview → save, all in one workflow.</p>
+                                    </div>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button @click="addVirtualModelDraft" class="px-3 py-2 rounded-lg text-[10px] font-black uppercase border border-slate-300 dark:border-slate-700">Add Virtual Model</button>
+                                        <button @click="saveConfig" class="luxury-gradient px-4 py-2 rounded-xl text-[10px] font-black uppercase text-white">Validate + Save</button>
+                                    </div>
+                                </div>
+                                <div x-show="configValidation.errors.length || configValidation.warnings.length || configValidation.success" class="mb-4 space-y-2">
+                                    <div x-show="configValidation.errors.length" class="rounded-xl border border-rose-200 bg-rose-50 dark:border-rose-900/60 dark:bg-rose-950/20 p-3 text-xs text-rose-700 dark:text-rose-300">
+                                        <div class="font-black uppercase tracking-widest text-[10px] mb-2">Validation errors — config not saved</div>
+                                        <ul class="list-disc pl-4 space-y-1"><template x-for="error in configValidation.errors" :key="error"><li x-text="error"></li></template></ul>
+                                    </div>
+                                    <div x-show="configValidation.warnings.length" class="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/20 p-3 text-xs text-amber-700 dark:text-amber-300">
+                                        <div class="font-black uppercase tracking-widest text-[10px] mb-2">Warnings</div>
+                                        <ul class="list-disc pl-4 space-y-1"><template x-for="warning in configValidation.warnings" :key="warning"><li x-text="warning"></li></template></ul>
+                                    </div>
+                                    <div x-show="configValidation.success" class="rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/20 p-3 text-xs text-emerald-700 dark:text-emerald-300 font-bold" x-text="configValidation.success"></div>
                                 </div>
                                 <div class="space-y-4 max-h-[460px] overflow-auto pr-2">
                                     <template x-for="(model, index) in virtualModelsDraft" :key="model.id + '-' + index">
@@ -532,10 +553,67 @@
                                         <input type="number" step="0.0001" x-model="virtualRouterPolicyDraft.premium_monthly_cost_limit" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
                                     </div>
                                 </div>
-                                <div class="mt-3 text-[10px] text-slate-400">This editor writes back to <span class="font-mono">VIRTUAL_MODELS_JSON</span> and <span class="font-mono">VIRTUAL_ROUTER_CONFIG_JSON</span>.</div>
+                                <div class="mt-6 rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 p-4 space-y-4">
+                                    <div class="flex items-center justify-between gap-3">
+                                        <div>
+                                            <h4 class="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300">Route Decision Preview</h4>
+                                            <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Test unsaved virtual model drafts before saving config.</p>
+                                        </div>
+                                        <button @click="previewRouteDecision" :disabled="routePreview.loading" class="luxury-gradient px-4 py-2 rounded-xl text-[10px] font-black uppercase text-white disabled:opacity-50" x-text="routePreview.loading ? 'Previewing...' : 'Validate + Preview Route'"></button>
+                                    </div>
+                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        <div>
+                                            <label class="text-[10px] uppercase text-slate-400 font-bold">Requested Model</label>
+                                            <select x-model="routePreview.model" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
+                                                <template x-for="model in virtualModelsDraft" :key="model.id">
+                                                    <option :value="model.id" x-text="model.id"></option>
+                                                </template>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="text-[10px] uppercase text-slate-400 font-bold">Max Tokens</label>
+                                            <input type="number" min="1" x-model="routePreview.max_tokens" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
+                                        </div>
+                                        <div x-show="routePreview.result" class="rounded-xl bg-white/70 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 px-4 py-3">
+                                            <div class="text-[10px] uppercase text-slate-400 font-bold">Resolved Model</div>
+                                            <div class="font-mono text-xs font-black text-emerald-600 dark:text-emerald-400 break-all" x-text="routePreview.result?.resolved_model || '-'"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="text-[10px] uppercase text-slate-400 font-bold">Sample Prompt</label>
+                                        <textarea x-model="routePreview.prompt" rows="5" placeholder="Paste a realistic user prompt to preview routing..." class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs"></textarea>
+                                    </div>
+                                    <div x-show="routePreview.error" class="text-xs text-rose-500 font-bold" x-text="routePreview.error"></div>
+                                    <div x-show="routePreview.result" class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                                        <div class="rounded-xl bg-white/70 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 px-4 py-3">
+                                            <div class="text-[10px] uppercase text-slate-400 font-bold">Mode</div>
+                                            <div class="font-bold" x-text="routePreview.result?.used_virtual_model ? 'Virtual route' : 'Raw passthrough'"></div>
+                                        </div>
+                                        <div class="rounded-xl bg-white/70 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 px-4 py-3 md:col-span-2">
+                                            <div class="text-[10px] uppercase text-slate-400 font-bold">Reason</div>
+                                            <div class="font-mono text-[11px] break-all" x-text="routePreview.result?.routing_reason || '-'"></div>
+                                        </div>
+                                        <div class="rounded-xl bg-white/70 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 px-4 py-3 md:col-span-3">
+                                            <div class="text-[10px] uppercase text-slate-400 font-bold mb-1">Signals</div>
+                                            <div class="font-mono text-[11px] text-slate-600 dark:text-slate-300" x-text="JSON.stringify(routePreview.result?.signals || {}, null, 2)"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mt-3 text-[10px] text-slate-400">This editor validates and writes back to <span class="font-mono">VIRTUAL_MODELS_JSON</span> and <span class="font-mono">VIRTUAL_ROUTER_CONFIG_JSON</span>.</div>
                             </div>
-                        </div>
-                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+
+                        <div x-show="systemTab === 'health'" x-transition class="glass p-6 rounded-2xl shadow-xl">
+                                <h3 class="text-sm font-black uppercase tracking-widest mb-4">Service Health</h3>
+                                <div class="text-xs mb-3">Overall: <span class="font-bold" :class="systemHealth.status === 'ok' ? 'text-emerald-500' : 'text-amber-500'" x-text="systemHealth.status"></span></div>
+                                <template x-for="(check, name) in systemHealth.checks" :key="name">
+                                    <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 py-2 text-sm">
+                                        <span x-text="name"></span>
+                                        <span :class="check.ok ? 'text-emerald-500' : 'text-rose-500'" x-text="check.ok ? 'OK' : 'ERROR'"></span>
+                                    </div>
+                                </template>
+                            </div>
+
+                        <div x-show="systemTab === 'config'" x-transition class="grid grid-cols-1 gap-8 mb-8">
                             <div class="glass p-6 rounded-2xl shadow-xl">
                                 <h3 class="text-sm font-black uppercase tracking-widest mb-4">Config Management</h3>
                                 <div class="space-y-3 max-h-[400px] overflow-auto pr-2">
@@ -546,17 +624,18 @@
                                         </div>
                                     </template>
                                 </div>
-                                <button @click="saveConfig" class="mt-4 luxury-gradient px-4 py-2 rounded-xl text-xs font-black uppercase text-white">Save Config</button>
+                                <button @click="saveConfig" class="mt-4 luxury-gradient px-4 py-2 rounded-xl text-xs font-black uppercase text-white">Validate + Save Config</button>
                             </div>
                         </div>
-                        <div class="glass rounded-2xl overflow-hidden shadow-xl">
+
+                        <div x-show="systemTab === 'runtime'" x-transition class="glass rounded-2xl overflow-hidden shadow-xl">
                             <div class="px-8 py-6 border-b border-slate-200 dark:border-slate-800/60 bg-white/50 dark:bg-slate-900/40"><h2 class="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">System Runtime Logs</h2></div>
                             <div class="overflow-x-auto max-h-[320px]"><table class="w-full text-left font-mono text-[11px]"><thead class="bg-slate-100 dark:bg-slate-900/20 text-[10px] text-slate-400 uppercase"><tr><th class="px-6 py-3">Time</th><th class="px-6 py-3">Level</th><th class="px-6 py-3">Message</th></tr></thead>
                                 <tbody class="divide-y divide-slate-200 dark:divide-slate-800/40"><template x-for="log in systemLogs" :key="log.ts + log.message"><tr><td class="px-6 py-2" x-text="formatDateTimeShort(log.ts)"></td><td class="px-6 py-2" x-text="log.level"></td><td class="px-6 py-2" x-text="log.message"></td></tr></template></tbody>
                             </table></div>
                         </div>
-                    </section>
 
+                    </section>
                     <!-- LOGS -->
                     <section x-show="view === 'logs'" class="mb-10 space-y-8">
                         <div class="glass p-6 rounded-2xl shadow-xl space-y-5">
