@@ -1,6 +1,6 @@
 import { Elysia } from "elysia";
 import { cors } from "@elysiajs/cors";
-import { pool, webuiPool, initDb } from "./db";
+import { db, pool, webuiPool, initDb } from "./db";
 import { redis } from "./redis";
 import { writeSystemLog, ensureConfigStore, loadRuntimeConfigFromDb, startConfigSubscriber } from "./services/config";
 import { proxyRoutes } from "./routes/proxy";
@@ -38,9 +38,9 @@ async function flushQueues() {
     const perfBatch = await drainQueue("request_perf_queue", 500);
     for (const p of perfBatch) {
       await pool.query(
-        `INSERT INTO request_logs (user_id, model, path, method, status, is_stream, latency_ms, total_cost, denied_reason, denied_category, started_at, completed_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-        [p.user_id, p.model, p.path, p.method, p.status, p.is_stream, p.latency_ms, p.total_cost || 0, p.denied_reason || null, p.denied_category || null, p.started_at, p.completed_at]
+        `INSERT INTO request_logs (user_id, model, path, method, status, is_stream, latency_ms, total_cost, denied_reason, denied_category, requested_model, resolved_model, routing_reason, started_at, completed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+        [p.user_id, p.model, p.path, p.method, p.status, p.is_stream, p.latency_ms, p.total_cost || 0, p.denied_reason || null, p.denied_category || null, p.requested_model || null, p.resolved_model || null, p.routing_reason || null, p.started_at, p.completed_at]
       );
     }
     if (usageBatch.length || perfBatch.length) {
@@ -66,9 +66,9 @@ async function startBackgroundWorker() {
       const perfBatch = await drainQueue("request_perf_queue", 100);
       for (const p of perfBatch) {
         await pool.query(
-          `INSERT INTO request_logs (user_id, model, path, method, status, is_stream, latency_ms, total_cost, denied_reason, denied_category, started_at, completed_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-          [p.user_id, p.model, p.path, p.method, p.status, p.is_stream, p.latency_ms, p.total_cost || 0, p.denied_reason || null, p.denied_category || null, p.started_at, p.completed_at]
+          `INSERT INTO request_logs (user_id, model, path, method, status, is_stream, latency_ms, total_cost, denied_reason, denied_category, requested_model, resolved_model, routing_reason, started_at, completed_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+          [p.user_id, p.model, p.path, p.method, p.status, p.is_stream, p.latency_ms, p.total_cost || 0, p.denied_reason || null, p.denied_category || null, p.requested_model || null, p.resolved_model || null, p.routing_reason || null, p.started_at, p.completed_at]
         );
       }
 
@@ -91,6 +91,48 @@ async function startBackgroundWorker() {
 // ─── Graceful shutdown ────────────────────────────────────────────────────────
 
 let shuttingDown = false;
+let isBootReady = false;
+let lastBootError: string | null = null;
+
+async function getReadinessStatus() {
+  const checks: Record<string, any> = {};
+  let status: "ok" | "degraded" | "starting" = isBootReady ? "ok" : "starting";
+
+  try {
+    await db.run("SELECT 1");
+    checks.database = { ok: true };
+  } catch (e: any) {
+    status = "degraded";
+    checks.database = { ok: false, error: e?.message || String(e) };
+  }
+
+  try {
+    await webuiPool.query("SELECT 1");
+    checks.webui_database = { ok: true };
+  } catch (e: any) {
+    status = "degraded";
+    checks.webui_database = { ok: false, error: e?.message || String(e) };
+  }
+
+  try {
+    const pong = await redis.ping();
+    checks.redis = { ok: pong === "PONG" };
+    if (pong !== "PONG") status = "degraded";
+  } catch (e: any) {
+    status = "degraded";
+    checks.redis = { ok: false, error: e?.message || String(e) };
+  }
+
+  if (!isBootReady && status === "ok") status = "starting";
+
+  return {
+    status,
+    ready: isBootReady && status === "ok",
+    bootstrapped: isBootReady,
+    lastBootError,
+    checks,
+  };
+}
 
 async function shutdown(signal: string) {
   if (shuttingDown) return;
@@ -128,19 +170,36 @@ const app = new Elysia()
   .use(cors())
   .use(proxyRoutes)
   .use(adminRoutes)
-  .get("/health", () => ({ status: "ok", engine: "elysia", storage: "hybrid" }))
+  .get("/health", async ({ set }) => {
+    const readiness = await getReadinessStatus();
+    if (!readiness.ready) set.status = readiness.status === "starting" ? 503 : 503;
+    return { engine: "elysia", storage: "hybrid", ...readiness };
+  })
+  .get("/readyz", async ({ set }) => {
+    const readiness = await getReadinessStatus();
+    if (!readiness.ready) set.status = 503;
+    return readiness;
+  })
   .get("/", () => Bun.file("public/index.html"))
   .get("/js/admin.js", () => Bun.file("public/js/admin.js"))
   .get("/js/reports.js", () => Bun.file("public/js/reports.js"))
-  .get("/js/policies.js", () => Bun.file("public/js/policies.js"))
-  .listen(8080);
+  .get("/js/policies.js", () => Bun.file("public/js/policies.js"));
 
 // ─── Startup sequence ─────────────────────────────────────────────────────────
 
+try {
+  await initDb();
+  await ensureConfigStore();
+  await loadRuntimeConfigFromDb();
+  await startConfigSubscriber();
+  startBackgroundWorker();
+  isBootReady = true;
+  lastBootError = null;
+} catch (e: any) {
+  lastBootError = e?.message || String(e);
+  writeSystemLog("error", "Startup bootstrap failed", { error: lastBootError });
+  throw e;
+}
+app.listen(8080);
 console.log(`🦊 AI Control Plane running at http://localhost:${app.server?.port}`);
 writeSystemLog("info", "Middleware started", { port: app.server?.port });
-await initDb();
-await ensureConfigStore();
-await loadRuntimeConfigFromDb();
-await startConfigSubscriber();
-startBackgroundWorker();
