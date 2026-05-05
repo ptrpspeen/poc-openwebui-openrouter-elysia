@@ -79,11 +79,6 @@
                 <div class="luxury-gradient h-12 w-12 rounded-2xl flex items-center justify-center shadow-glow text-white"><i class="fa-solid fa-bolt"></i></div>
                 <div><h2 class="text-xl font-black tracking-tight text-slate-950 dark:text-white">SUT-AI</h2><p class="text-[10px] text-slate-400 font-black uppercase tracking-[0.28em]">Control Plane</p></div>
             </div>
-                <div class="mx-5 mb-4 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-slate-50/80 dark:bg-slate-900/55 p-4">
-                    <div class="text-[10px] font-black uppercase tracking-widest text-slate-400">Live Guardrail</div>
-                    <div class="mt-2 flex items-end justify-between gap-3"><span class="text-2xl font-black text-slate-950 dark:text-white" x-text="systemHealth.status || 'unknown'"></span><span class="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-black uppercase text-emerald-500">ready</span></div>
-                <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"><div class="h-full w-2/3 rounded-full bg-slate-700 dark:bg-slate-300"></div></div>
-            </div>
             <nav class="flex-1 px-4 space-y-2 mt-2">
                 <template x-for="item in menuItems" :key="item.id">
                     <button @click="view = item.id" :class="view === item.id ? 'luxury-gradient text-white shadow-glow scale-[1.01]' : 'text-slate-500 hover:bg-white/70 dark:hover:bg-slate-900/70 hover:text-slate-900 dark:hover:text-slate-100'" class="group w-full text-left flex items-center rounded-2xl px-4 py-3.5 text-sm font-bold transition-all">
