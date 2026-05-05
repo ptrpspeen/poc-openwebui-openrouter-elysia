@@ -72,6 +72,17 @@
                     }
                     return '';
                 },
+                viewDescription(view) {
+                    return {
+                        overview: 'Executive health, spend, token burn, and model volume.',
+                        users: 'Assign policies, review group inheritance, and control user access.',
+                        groups: 'Map OpenWebUI groups to middleware quota policies.',
+                        policies: 'Build quota formulas, preview enforcement, and gate allowed models.',
+                        reports: 'Analyze costs, usage distribution, quota events, and model demand.',
+                        system: 'Configure virtual routing, health, runtime config, and system logs.',
+                        logs: 'Trace request latency, routing decisions, status, and cost events.',
+                    }[view] || 'AI Control Plane administration';
+                },
                 async init() { if (this.adminKey) { await this.refreshAll(); setInterval(() => this.refreshAll(), 15000); } },
                 toggleTheme() { this.darkMode = !this.darkMode; localStorage.setItem('theme', this.darkMode ? 'dark' : 'light'); },
                 saveKey() { this.adminKey = this.keyInput; localStorage.setItem('adminKey', this.adminKey); this.init(); },

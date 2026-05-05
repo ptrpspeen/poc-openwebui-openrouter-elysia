@@ -14,6 +14,10 @@
             theme: {
                 extend: {
                     fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+                    boxShadow: {
+                        soft: '0 24px 70px -34px rgba(15, 23, 42, 0.45)',
+                        glow: '0 0 0 1px rgba(99, 102, 241, 0.08), 0 22px 60px -32px rgba(67, 93, 240, 0.75)'
+                    },
                     colors: {
                         luxury: { 50: '#f5f7ff', 100: '#ebf0fe', 200: '#ced9fd', 300: '#a1b6fb', 400: '#6d8bf7', 500: '#435df0', 600: '#2e3ee4', 700: '#252ecc', 800: '#2429a6', 900: '#222884', 950: '#14174d' }
                     }
@@ -23,16 +27,43 @@
     </script>
     <style>
         [x-cloak] { display: none !important; }
-        .glass { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(0, 0, 0, 0.05); }
-        .dark .glass { background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.1); }
-        .luxury-gradient { background: linear-gradient(135deg, #435df0 0%, #a855f7 100%); }
-        .glow { box-shadow: 0 0 20px rgba(67, 93, 240, 0.2); }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        .dark ::-webkit-scrollbar-thumb { background: #334155; }
+        :root { color-scheme: light; --panel: rgba(255,255,255,.78); --panel-border: rgba(148,163,184,.22); --grid-line: rgba(15,23,42,.055); }
+        .dark { color-scheme: dark; --panel: rgba(15,23,42,.72); --panel-border: rgba(148,163,184,.16); --grid-line: rgba(255,255,255,.06); }
+        body {
+            background:
+                radial-gradient(circle at 8% 8%, rgba(67, 93, 240, .16), transparent 28rem),
+                radial-gradient(circle at 95% 12%, rgba(168, 85, 247, .14), transparent 26rem),
+                linear-gradient(180deg, #f8fafc 0%, #eef2ff 52%, #f8fafc 100%);
+        }
+        .dark body, body.dark {
+            background:
+                radial-gradient(circle at 10% 5%, rgba(67, 93, 240, .24), transparent 30rem),
+                radial-gradient(circle at 90% 18%, rgba(168, 85, 247, .18), transparent 28rem),
+                linear-gradient(180deg, #020617 0%, #0f172a 58%, #020617 100%);
+        }
+        .app-grid::before { content: ''; position: fixed; inset: 0; pointer-events: none; background-image: linear-gradient(var(--grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--grid-line) 1px, transparent 1px); background-size: 40px 40px; mask-image: linear-gradient(to bottom, black, transparent 78%); }
+        .glass { background: var(--panel); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border: 1px solid var(--panel-border); box-shadow: 0 18px 55px -34px rgba(15, 23, 42, .55); }
+        .dark .glass { box-shadow: 0 18px 55px -36px rgba(0, 0, 0, .85); }
+        .luxury-gradient { background: linear-gradient(135deg, #435df0 0%, #7c3aed 48%, #db2777 100%); }
+        .aurora-gradient { background: linear-gradient(135deg, rgba(67, 93, 240, .96), rgba(124, 58, 237, .92) 48%, rgba(219, 39, 119, .86)); }
+        .glow { box-shadow: 0 0 28px rgba(67, 93, 240, 0.28); }
+        .metric-card { position: relative; overflow: hidden; }
+        .metric-card::after { content: ''; position: absolute; inset: auto -20% -50% 35%; height: 120px; background: radial-gradient(circle, rgba(99,102,241,.22), transparent 64%); opacity: .75; }
+        .section-shell { animation: softIn .28s ease-out; }
+        @keyframes softIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        input, select, textarea { min-height: 2.45rem; }
+        input:focus, select:focus, textarea:focus { box-shadow: 0 0 0 3px rgba(67, 93, 240, .16); border-color: #6d8bf7 !important; }
+        table thead { position: sticky; top: 0; z-index: 1; }
+        tbody tr { transition: background-color .15s ease, transform .15s ease; }
+        tbody tr:hover { background: rgba(67, 93, 240, .045); }
+        .dark tbody tr:hover { background: rgba(99, 102, 241, .08); }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, .7); border-radius: 999px; }
+        .dark ::-webkit-scrollbar-thumb { background: rgba(71, 85, 105, .82); }
     </style>
 </head>
-<body class="h-full text-slate-600 bg-slate-50 dark:text-slate-200 dark:bg-slate-950 transition-colors duration-300 font-sans">
+<body class="app-grid h-full text-slate-600 dark:text-slate-200 transition-colors duration-300 font-sans">
     
     <!-- Auth Shield -->
     <div x-show="!adminKey" class="fixed inset-0 z-[100] flex items-center justify-center bg-white dark:bg-slate-950 px-4" x-transition.opacity>
@@ -52,15 +83,20 @@
 
     <div x-show="adminKey" class="flex h-full" x-cloak>
         <!-- Sidebar -->
-        <aside class="hidden md:flex w-72 flex-col bg-white dark:bg-slate-900/40 border-r border-slate-200 dark:border-slate-800/60 backdrop-blur-md">
-            <div class="p-8 flex items-center gap-3">
-                <div class="luxury-gradient h-10 w-10 rounded-xl flex items-center justify-center shadow-lg text-white"><i class="fa-solid fa-bolt"></i></div>
-                <div><h2 class="text-lg font-bold text-slate-900 dark:text-white">SUT-AI</h2><p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Control Plane</p></div>
+        <aside class="hidden md:flex w-80 flex-col bg-white/70 dark:bg-slate-950/45 border-r border-slate-200/70 dark:border-slate-800/70 backdrop-blur-2xl relative z-20">
+            <div class="p-7 flex items-center gap-3">
+                <div class="luxury-gradient h-12 w-12 rounded-2xl flex items-center justify-center shadow-glow text-white"><i class="fa-solid fa-bolt"></i></div>
+                <div><h2 class="text-xl font-black tracking-tight text-slate-950 dark:text-white">SUT-AI</h2><p class="text-[10px] text-slate-400 font-black uppercase tracking-[0.28em]">Control Plane</p></div>
             </div>
-            <nav class="flex-1 px-4 space-y-2 mt-4">
+            <div class="mx-5 mb-4 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-slate-50/80 dark:bg-slate-900/55 p-4">
+                <div class="text-[10px] font-black uppercase tracking-widest text-slate-400">Live Guardrail</div>
+                <div class="mt-2 flex items-end justify-between gap-3"><span class="text-2xl font-black text-slate-950 dark:text-white" x-text="systemHealth.status || 'unknown'"></span><span class="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-black uppercase text-emerald-500">ready</span></div>
+                <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"><div class="h-full w-2/3 luxury-gradient rounded-full"></div></div>
+            </div>
+            <nav class="flex-1 px-4 space-y-2 mt-2">
                 <template x-for="item in menuItems" :key="item.id">
-                    <button @click="view = item.id" :class="view === item.id ? 'bg-luxury-500/10 text-luxury-600 dark:text-luxury-400 border-l-4 border-luxury-500 shadow-sm' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/30 hover:text-slate-600 dark:hover:text-slate-300 border-l-4 border-transparent'" class="group w-full text-left flex items-center px-4 py-3 text-sm font-semibold transition-all">
-                        <i :class="item.icon" class="mr-3 w-5 text-lg"></i><span x-text="item.label"></span>
+                    <button @click="view = item.id" :class="view === item.id ? 'luxury-gradient text-white shadow-glow scale-[1.01]' : 'text-slate-500 hover:bg-white/70 dark:hover:bg-slate-900/70 hover:text-slate-900 dark:hover:text-slate-100'" class="group w-full text-left flex items-center rounded-2xl px-4 py-3.5 text-sm font-bold transition-all">
+                        <span class="mr-3 flex h-9 w-9 items-center justify-center rounded-xl bg-white/55 dark:bg-slate-950/35"><i :class="item.icon" class="text-base"></i></span><span x-text="item.label"></span>
                     </button>
                 </template>
             </nav>
@@ -69,27 +105,43 @@
             </div>
         </aside>
 
-        <main class="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-            <header class="h-20 flex items-center justify-between px-8 border-b border-slate-200 dark:border-slate-800/40 z-10 bg-white/50 dark:bg-transparent backdrop-blur-md">
-                <div class="flex items-center gap-4"><div class="h-10 w-1 bg-luxury-500 rounded-full"></div><h1 class="text-xl font-bold text-slate-900 dark:text-white" x-text="menuItems.find(i => i.id === view).label"></h1></div>
+        <main class="flex-1 flex flex-col min-w-0 overflow-hidden relative z-10">
+            <header class="h-20 flex items-center justify-between px-4 md:px-8 border-b border-slate-200/70 dark:border-slate-800/60 z-10 bg-white/55 dark:bg-slate-950/35 backdrop-blur-2xl">
+                <div class="flex items-center gap-4"><div class="h-11 w-11 rounded-2xl bg-slate-900 text-white dark:bg-white dark:text-slate-950 flex items-center justify-center"><i :class="menuItems.find(i => i.id === view)?.icon"></i></div><div><h1 class="text-xl font-black tracking-tight text-slate-950 dark:text-white" x-text="menuItems.find(i => i.id === view).label"></h1><p class="text-xs text-slate-400" x-text="viewDescription(view)"></p></div></div>
                 <div class="flex items-center gap-4">
                     <button @click="toggleTheme" class="glass p-2.5 rounded-xl text-slate-500 dark:text-yellow-400 hover:scale-110 transition-all"><i class="fa-solid" :class="darkMode ? 'fa-sun' : 'fa-moon'"></i></button>
-                    <button @click="refreshAll" class="luxury-gradient px-4 py-2 rounded-xl text-xs font-black uppercase text-white shadow-lg hover:brightness-110 transition-all flex items-center gap-2 group"><i class="fa-solid fa-arrows-rotate group-hover:rotate-180 transition-transform duration-500"></i><span>Sync</span></button>
+                    <button @click="refreshAll" class="luxury-gradient px-4 py-2.5 rounded-xl text-xs font-black uppercase text-white shadow-glow hover:brightness-110 transition-all flex items-center gap-2 group"><i class="fa-solid fa-arrows-rotate group-hover:rotate-180 transition-transform duration-500"></i><span class="hidden sm:inline">Sync</span></button>
                 </div>
             </header>
 
-            <div class="flex-1 overflow-y-auto p-8 z-10">
+            <div class="flex-1 overflow-y-auto p-4 md:p-8 pb-28 md:pb-8 z-10">
                 <div x-show="Object.keys(errors).length" class="mb-6 rounded-2xl border border-amber-300/40 bg-amber-100/70 dark:bg-amber-500/10 px-5 py-4 text-sm text-amber-900 dark:text-amber-200">
                     <div class="font-black uppercase tracking-widest text-[10px] mb-2">Partial load warnings</div>
                     <template x-for="(msg, key) in errors" :key="key"><div><span class="font-bold" x-text="key"></span>: <span x-text="msg"></span></div></template>
                 </div>
+                <!-- Executive Shell -->
+                <div class="aurora-gradient mb-8 overflow-hidden rounded-[2rem] p-6 md:p-8 text-white shadow-glow relative">
+                    <div class="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-white/15 blur-2xl"></div>
+                    <div class="absolute -bottom-20 left-1/2 h-52 w-52 rounded-full bg-fuchsia-300/20 blur-3xl"></div>
+                    <div class="relative grid grid-cols-1 lg:grid-cols-12 gap-6 items-end">
+                        <div class="lg:col-span-7">
+                            <div class="mb-3 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em]"><span class="h-2 w-2 rounded-full bg-emerald-300"></span> AI Gateway Ops</div>
+                            <h2 class="text-3xl md:text-5xl font-black tracking-tight">Route smarter. Spend safer.</h2>
+                            <p class="mt-3 max-w-2xl text-sm md:text-base text-white/75">Unified command surface for quota policy, OpenWebUI groups, virtual model routing, cost reports, and request observability.</p>
+                        </div>
+                        <div class="lg:col-span-5 grid grid-cols-3 gap-3 text-center">
+                            <div class="rounded-2xl bg-white/12 p-4 backdrop-blur border border-white/10"><div class="text-[10px] uppercase tracking-widest text-white/60">24h Reqs</div><div class="text-xl font-black" x-text="formatNumber(stats.last_24h.requests || 0)"></div></div>
+                            <div class="rounded-2xl bg-white/12 p-4 backdrop-blur border border-white/10"><div class="text-[10px] uppercase tracking-widest text-white/60">24h Cost</div><div class="text-xl font-black" x-text="'$' + Number(stats.last_24h.cost || 0).toFixed(4)"></div></div>
+                            <div class="rounded-2xl bg-white/12 p-4 backdrop-blur border border-white/10"><div class="text-[10px] uppercase tracking-widest text-white/60">P95</div><div class="text-xl font-black" x-text="Math.round(stats.last_24h.p95_latency_ms || 0) + 'ms'"></div></div>
+                        </div>
+                    </div>
+                </div>
                 <!-- Stats Grid -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-5 mb-10">
                     <template x-for="stat in statsCards" :key="stat.label">
-                        <div class="glass p-6 rounded-2xl group hover:border-luxury-500/50 transition-all duration-300 relative shadow-sm">
-                            <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3" x-text="stat.label"></h3>
-                            <p class="text-3xl font-black text-slate-900 dark:text-white tracking-tighter" x-text="stat.value"></p>
-                            <div class="mt-2 text-[10px] text-slate-400" x-text="stat.context"></div>
+                        <div class="glass metric-card p-5 rounded-3xl group hover:border-luxury-500/50 hover:-translate-y-0.5 transition-all duration-300 relative">
+                            <div class="relative z-10 flex items-start justify-between gap-4"><div><h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3" x-text="stat.label"></h3><p class="text-2xl md:text-3xl font-black text-slate-950 dark:text-white tracking-tighter" x-text="stat.value"></p></div><div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-luxury-500/10 text-luxury-500"><i :class="stat.icon"></i></div></div>
+                            <div class="relative z-10 mt-3 text-[10px] text-slate-400" x-text="stat.context"></div>
                         </div>
                     </template>
                 </div>
@@ -162,7 +214,7 @@
                                     <form @submit.prevent="saveGroupPolicy" class="space-y-4">
                                         <select x-model="newGroupPolicy.group_name" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none"><option value="">-- Choose Group --</option><template x-for="g in webuiGroups" :key="g.name"><option :value="g.name" x-text="g.name"></option></template></select>
                                         <select x-model="newGroupPolicy.policy_id" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white outline-none"><option value="">-- Choose Policy --</option><template x-for="p in policies" :key="p.id"><option :value="p.id" x-text="p.name"></option></template></select>
-                                        <input type="number" x-model.number="newGroupPolicy.priority" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-white" placeholder="Priority (Higher = Priority)">
+                                        <input type="number" x-model.number="newGroupPolicy.priority" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-slate-900 dark:text-white" placeholder="Priority (Higher = Priority)">
                                         <button type="submit" class="luxury-gradient w-full py-4 rounded-xl font-black text-xs uppercase text-white shadow-xl">Execute Link</button>
                                     </form>
                                 </div>
@@ -785,6 +837,16 @@
                     </section>
                 </div>
             </div>
+            <nav class="md:hidden fixed bottom-4 left-4 right-4 z-40 rounded-[1.6rem] border border-slate-200/70 dark:border-slate-800/70 bg-white/86 dark:bg-slate-950/86 p-2 shadow-soft backdrop-blur-2xl">
+                <div class="grid grid-cols-7 gap-1">
+                    <template x-for="item in menuItems" :key="item.id">
+                        <button @click="view = item.id" :class="view === item.id ? 'luxury-gradient text-white shadow-lg' : 'text-slate-400'" class="flex h-12 flex-col items-center justify-center rounded-2xl text-[10px] font-black transition-all">
+                            <i :class="item.icon" class="text-sm"></i>
+                            <span class="mt-1 truncate max-w-full" x-text="item.label.split(' ')[0]"></span>
+                        </button>
+                    </template>
+                </div>
+            </nav>
         </main>
     </div>
 
