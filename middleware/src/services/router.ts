@@ -17,6 +17,10 @@ type TaskSignals = {
   isCodingTask: boolean;
   needsLongContext: boolean;
   needsPremiumReasoning: boolean;
+  languageHint: "thai" | "english" | "mixed" | "unknown";
+  matchedSignals: string[];
+  confidence: number;
+  hybridClassifierRecommended: boolean;
 };
 
 type RouterPolicyConfig = {
@@ -24,6 +28,24 @@ type RouterPolicyConfig = {
   premium_allowed_groups: string[];
   premium_daily_cost_limit: number;
   premium_monthly_cost_limit: number;
+  hybrid_classifier_enabled: boolean;
+  hybrid_classifier_model: string;
+  hybrid_confidence_threshold: number;
+};
+
+export type RouterSignalRule = {
+  label: string;
+  description: string;
+  keywords: string[];
+  weight: number;
+  coding: boolean;
+};
+
+export type RouterRulesConfig = {
+  premium_keyword_score: number;
+  long_context_tokens: number;
+  premium_prompt_tokens: number;
+  signal_rules: RouterSignalRule[];
 };
 
 type PremiumAccessDecision = {
@@ -80,6 +102,52 @@ export const DEFAULT_ROUTER_POLICY: RouterPolicyConfig = {
   premium_allowed_groups: ["admin", "research"],
   premium_daily_cost_limit: 0,
   premium_monthly_cost_limit: 0,
+  hybrid_classifier_enabled: false,
+  hybrid_classifier_model: "openai/gpt-4.1-nano",
+  hybrid_confidence_threshold: 0.55,
+};
+
+export const DEFAULT_ROUTER_RULES: RouterRulesConfig = {
+  premium_keyword_score: 2,
+  long_context_tokens: 8000,
+  premium_prompt_tokens: 4000,
+  signal_rules: [
+    {
+      label: "architecture",
+      description: "Architecture, design, tradeoff, and migration work.",
+      weight: 1,
+      coding: false,
+      keywords: ["architecture", "design", "system design", "tradeoff", "migration", "สถาปัตยกรรม", "ออกแบบระบบ", "ออกแบบ", "โครงสร้างระบบ", "ย้ายระบบ", "ไมเกรต", "ข้อดีข้อเสีย", "เปรียบเทียบทางเลือก"],
+    },
+    {
+      label: "security",
+      description: "Security, vulnerability, auth, and threat analysis.",
+      weight: 1,
+      coding: false,
+      keywords: ["security", "vulnerability", "threat", "auth", "authorization", "encryption", "ความปลอดภัย", "ช่องโหว่", "ภัยคุกคาม", "ยืนยันตัวตน", "สิทธิ์", "เข้ารหัส", "แฮก", "โจมตี"],
+    },
+    {
+      label: "root_cause_debug",
+      description: "Root cause, incident, debugging, and failure diagnosis.",
+      weight: 1,
+      coding: false,
+      keywords: ["root cause", "incident", "postmortem", "debug", "diagnose", "failure", "สาเหตุ", "ต้นเหตุ", "หาสาเหตุ", "วิเคราะห์ปัญหา", "ดีบัก", "บั๊ก", "แก้บั๊ก", "ระบบล่ม", "ล้มเหลว", "ใช้งานไม่ได้"],
+    },
+    {
+      label: "analysis_research",
+      description: "Analysis, comparison, evaluation, reasoning, and research.",
+      weight: 1,
+      coding: false,
+      keywords: ["analyze", "analyse", "compare", "evaluate", "reason", "research", "วิเคราะห์", "เปรียบเทียบ", "ประเมิน", "ให้เหตุผล", "วิจัย", "สรุปเชิงลึก", "อธิบายเหตุผล"],
+    },
+    {
+      label: "coding",
+      description: "Programming, API, database, frontend/backend, and refactoring tasks.",
+      weight: 0,
+      coding: true,
+      keywords: ["code", "bug", "fix", "refactor", "typescript", "javascript", "sql", "query", "api", "backend", "frontend", "โค้ด", "เขียนโปรแกรม", "โปรแกรม", "แก้โค้ด", "รีแฟกเตอร์", "ฐานข้อมูล", "คิวรี่", "เอพีไอ", "หน้าบ้าน", "หลังบ้าน", "ฟรอนต์เอนด์", "แบ็กเอนด์"],
+    },
+  ],
 };
 
 function parseJsonConfig<T>(raw: string, fallback: T, label: string): T {
@@ -136,6 +204,35 @@ export function getRouterPolicyConfig(): RouterPolicyConfig {
     premium_allowed_groups,
     premium_daily_cost_limit: Math.max(0, parseNumber(parsed?.premium_daily_cost_limit, DEFAULT_ROUTER_POLICY.premium_daily_cost_limit)),
     premium_monthly_cost_limit: Math.max(0, parseNumber(parsed?.premium_monthly_cost_limit, DEFAULT_ROUTER_POLICY.premium_monthly_cost_limit)),
+    hybrid_classifier_enabled: Boolean(parsed?.hybrid_classifier_enabled ?? DEFAULT_ROUTER_POLICY.hybrid_classifier_enabled),
+    hybrid_classifier_model: String(parsed?.hybrid_classifier_model || DEFAULT_ROUTER_POLICY.hybrid_classifier_model),
+    hybrid_confidence_threshold: Math.min(1, Math.max(0, parseNumber(parsed?.hybrid_confidence_threshold, DEFAULT_ROUTER_POLICY.hybrid_confidence_threshold))),
+  };
+}
+
+function normalizeSignalRule(input: any): RouterSignalRule | null {
+  const label = String(input?.label || "").trim();
+  const keywords = Array.isArray(input?.keywords) ? input.keywords.map((value: any) => String(value || "").trim().toLowerCase()).filter(Boolean) : [];
+  if (!label || !keywords.length) return null;
+  return {
+    label,
+    description: String(input?.description || "").trim(),
+    keywords,
+    weight: Math.max(0, parseNumber(input?.weight, 1)),
+    coding: Boolean(input?.coding),
+  };
+}
+
+export function getRouterRulesConfig(): RouterRulesConfig {
+  const parsed = parseJsonConfig<any>(runtimeConfig.VIRTUAL_ROUTER_RULES_JSON, DEFAULT_ROUTER_RULES, "VIRTUAL_ROUTER_RULES_JSON");
+  const signal_rules = Array.isArray(parsed?.signal_rules)
+    ? parsed.signal_rules.map((rule: any) => normalizeSignalRule(rule)).filter(Boolean) as RouterSignalRule[]
+    : DEFAULT_ROUTER_RULES.signal_rules;
+  return {
+    premium_keyword_score: Math.max(0, parseNumber(parsed?.premium_keyword_score, DEFAULT_ROUTER_RULES.premium_keyword_score)),
+    long_context_tokens: Math.max(1, parseNumber(parsed?.long_context_tokens, DEFAULT_ROUTER_RULES.long_context_tokens)),
+    premium_prompt_tokens: Math.max(1, parseNumber(parsed?.premium_prompt_tokens, DEFAULT_ROUTER_RULES.premium_prompt_tokens)),
+    signal_rules: signal_rules.length ? signal_rules : DEFAULT_ROUTER_RULES.signal_rules,
   };
 }
 
@@ -153,22 +250,51 @@ function estimatePromptTokens(body: any) {
   return text.trim() ? Math.max(1, Math.ceil(text.length / 4)) : 0;
 }
 
+function inferLanguageHint(text: string): TaskSignals["languageHint"] {
+  const thaiChars = (text.match(/[\u0E00-\u0E7F]/g) || []).length;
+  const englishChars = (text.match(/[a-z]/gi) || []).length;
+  if (thaiChars > 0 && englishChars > 0) {
+    if (thaiChars >= englishChars * 2) return "thai";
+    if (englishChars >= thaiChars * 2) return "english";
+    return "mixed";
+  }
+  if (thaiChars > 0) return "thai";
+  if (englishChars > 0) return "english";
+  return "unknown";
+}
+
 function deriveTaskSignals(body: any): TaskSignals {
   const fullText = extractText({ prompt: body?.prompt, input: body?.input, messages: body?.messages }).join("\n").toLowerCase();
   const promptTokens = estimatePromptTokens(body);
-  const keywordPatterns = [
-    /architecture|design|system design|tradeoff|migration/,
-    /security|vulnerability|threat|auth|authorization|encryption/,
-    /root cause|incident|postmortem|debug|diagnose|failure/,
-    /analy[sz]e|compare|evaluate|reason|research/,
-  ];
-  const keywordScore = keywordPatterns.reduce((score, pattern) => score + (pattern.test(fullText) ? 1 : 0), 0);
-  const isCodingTask = /code|bug|fix|refactor|typescript|javascript|sql|query|api|backend|frontend/.test(fullText)
-    || Array.isArray(body?.tools)
-    || Array.isArray(body?.messages) && body.messages.some((message: any) => typeof message?.content === "string" && /```/.test(message.content));
-  const needsLongContext = promptTokens >= 8000 || Array.isArray(body?.messages) && body.messages.length >= 12;
-  const needsPremiumReasoning = keywordScore >= 2 || needsLongContext || promptTokens >= 4000;
-  return { promptTokens, keywordScore, isCodingTask, needsLongContext, needsPremiumReasoning };
+  const languageHint = inferLanguageHint(fullText);
+  const rules = getRouterRulesConfig();
+  const matchedRules = rules.signal_rules.filter((rule) => rule.keywords.some((keyword) => fullText.includes(keyword.toLowerCase())));
+  const matchedSignals = matchedRules.map((rule) => rule.label);
+  const codingSignals = matchedRules.filter((rule) => rule.coding).map((rule) => rule.label);
+  if (Array.isArray(body?.tools)) codingSignals.push("tools");
+  if (Array.isArray(body?.messages) && body.messages.some((message: any) => typeof message?.content === "string" && /```/.test(message.content))) codingSignals.push("code_block");
+  const keywordScore = matchedRules.reduce((score, rule) => score + rule.weight, 0);
+  const isCodingTask = codingSignals.length > 0;
+  const needsLongContext = promptTokens >= rules.long_context_tokens || Array.isArray(body?.messages) && body.messages.length >= 12;
+  const needsPremiumReasoning = keywordScore >= rules.premium_keyword_score || needsLongContext || promptTokens >= rules.premium_prompt_tokens;
+  const confidence = Math.min(1, Math.max(
+    keywordScore > 0 ? 0.35 + keywordScore * 0.18 : 0,
+    isCodingTask ? 0.6 : 0,
+    needsLongContext ? 0.85 : 0,
+    promptTokens >= 4000 ? 0.75 : 0,
+  ));
+  const hybridClassifierRecommended = confidence < getRouterPolicyConfig().hybrid_confidence_threshold && promptTokens > 0;
+  return {
+    promptTokens,
+    keywordScore,
+    isCodingTask,
+    needsLongContext,
+    needsPremiumReasoning,
+    languageHint,
+    matchedSignals: [...new Set([...matchedSignals, ...codingSignals])],
+    confidence,
+    hybridClassifierRecommended,
+  };
 }
 
 function chooseCandidate(definition: VirtualModelDefinition, signals: TaskSignals) {
@@ -185,6 +311,37 @@ function chooseCandidate(definition: VirtualModelDefinition, signals: TaskSignal
       return signals.isCodingTask ? (definition.candidates[0] || definition.id) : (definition.candidates[1] || definition.candidates[0] || definition.id);
     case "long_context":
       return signals.needsLongContext ? (definition.candidates[0] || definition.id) : (definition.candidates[1] || definition.candidates[0] || definition.id);
+  }
+}
+
+export async function classifyRouteWithHybridLLM(body: any, policy = getRouterPolicyConfig()) {
+  if (!policy.hybrid_classifier_enabled || !runtimeConfig.OPENROUTER_API_KEY) return null;
+  const text = extractText({ prompt: body?.prompt, input: body?.input, messages: body?.messages }).join("\n").slice(0, 4000);
+  if (!text.trim()) return null;
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${runtimeConfig.OPENROUTER_API_KEY}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: policy.hybrid_classifier_model,
+        temperature: 0,
+        max_tokens: 120,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: "Classify Thai/English user prompts for LLM routing. Return compact JSON with task_type, complexity(simple|standard|complex), needs_code, needs_long_context, confidence(0-1), reason." },
+          { role: "user", content: text },
+        ],
+      }),
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    return JSON.parse(payload?.choices?.[0]?.message?.content || "null");
+  } catch (error: any) {
+    writeSystemLog("warn", "Hybrid route classifier failed; falling back to rules", { error: error?.message || String(error) });
+    return null;
   }
 }
 

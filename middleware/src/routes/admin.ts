@@ -211,7 +211,10 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
       max_tokens: parseNumber(body?.max_tokens, 1024),
       tools: body?.tools,
     };
+    const originalRulesJson = runtimeConfig.VIRTUAL_ROUTER_RULES_JSON;
+    if (body?.routerRulesJson) runtimeConfig.VIRTUAL_ROUTER_RULES_JSON = String(body.routerRulesJson);
     const decision = resolveVirtualModelWithDefinitions(requestedModel, requestBody, definitions);
+    runtimeConfig.VIRTUAL_ROUTER_RULES_JSON = originalRulesJson;
     return {
       success: true,
       requested_model: decision.requestedModel,

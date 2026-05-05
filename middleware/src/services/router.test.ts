@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { runtimeConfig } from "./config";
 import {
+  DEFAULT_ROUTER_POLICY,
   buildVirtualModelCatalogEntries,
   evaluatePremiumModelAccess,
   getRouterPolicyConfig,
+  getRouterRulesConfig,
   getVirtualModels,
   injectVirtualModelsIntoCatalog,
   isVirtualModel,
@@ -14,10 +16,12 @@ import {
 
 const originalVirtualModelsJson = runtimeConfig.VIRTUAL_MODELS_JSON;
 const originalRouterConfigJson = runtimeConfig.VIRTUAL_ROUTER_CONFIG_JSON;
+const originalRouterRulesJson = runtimeConfig.VIRTUAL_ROUTER_RULES_JSON;
 
 afterEach(() => {
   runtimeConfig.VIRTUAL_MODELS_JSON = originalVirtualModelsJson;
   runtimeConfig.VIRTUAL_ROUTER_CONFIG_JSON = originalRouterConfigJson;
+  runtimeConfig.VIRTUAL_ROUTER_RULES_JSON = originalRouterRulesJson;
 });
 
 describe("router helpers", () => {
@@ -107,6 +111,59 @@ describe("router helpers", () => {
     expect(resolution.signals.promptTokens).toBeGreaterThan(0);
   });
 
+  it("detects Thai analysis, debugging, security, and coding signals", () => {
+    const resolution = resolveVirtualModel("virtual/auto-balanced", {
+      messages: [{ role: "user", content: "ช่วยวิเคราะห์สาเหตุระบบล่ม ตรวจความปลอดภัยเอพีไอ และแก้บั๊กหลังบ้านให้หน่อย" }],
+    });
+
+    expect(resolution.usedVirtualModel).toBe(true);
+    expect(resolution.resolvedModel).toBe("anthropic/claude-3.7-sonnet");
+    expect(resolution.signals.languageHint).toBe("thai");
+    expect(resolution.signals.isCodingTask).toBe(true);
+    expect(resolution.signals.needsPremiumReasoning).toBe(true);
+    expect(resolution.signals.matchedSignals).toContain("root_cause_debug");
+    expect(resolution.signals.matchedSignals).toContain("security");
+  });
+
+  it("allows admins to configure rule-builder keywords and thresholds", () => {
+    runtimeConfig.VIRTUAL_ROUTER_RULES_JSON = JSON.stringify({
+      premium_keyword_score: 1.5,
+      long_context_tokens: 8000,
+      premium_prompt_tokens: 4000,
+      signal_rules: [
+        { label: "thai_procurement", description: "Procurement work", weight: 2, coding: false, keywords: ["จัดซื้อ", "TOR"] },
+      ],
+    });
+
+    const rules = getRouterRulesConfig();
+    expect(rules.signal_rules[0].label).toBe("thai_procurement");
+
+    const resolution = resolveVirtualModel("virtual/auto-balanced", {
+      messages: [{ role: "user", content: "ช่วยวิเคราะห์ TOR งานจัดซื้อระบบ AI ให้หน่อย" }],
+    });
+
+    expect(resolution.resolvedModel).toBe("anthropic/claude-3.7-sonnet");
+    expect(resolution.signals.matchedSignals).toContain("thai_procurement");
+    expect(resolution.signals.keywordScore).toBe(2);
+  });
+
+  it("exposes hybrid classifier config while keeping it off by default", () => {
+    const defaultConfig = getRouterPolicyConfig();
+    expect(defaultConfig.hybrid_classifier_enabled).toBe(false);
+    expect(defaultConfig.hybrid_classifier_model).toBe("openai/gpt-4.1-nano");
+
+    runtimeConfig.VIRTUAL_ROUTER_CONFIG_JSON = JSON.stringify({
+      ...DEFAULT_ROUTER_POLICY,
+      hybrid_classifier_enabled: true,
+      hybrid_classifier_model: "openai/gpt-4.1-mini",
+      hybrid_confidence_threshold: 0.7,
+    });
+    const config = getRouterPolicyConfig();
+    expect(config.hybrid_classifier_enabled).toBe(true);
+    expect(config.hybrid_classifier_model).toBe("openai/gpt-4.1-mini");
+    expect(config.hybrid_confidence_threshold).toBe(0.7);
+  });
+
   it("blocks premium virtual model when group gate fails", () => {
     const config = getRouterPolicyConfig();
     const decision = evaluatePremiumModelAccess("virtual/auto-best", ["students"], null, {
@@ -123,6 +180,7 @@ describe("router helpers", () => {
       daily: { cost: 1.2 },
       monthly: { cost: 4.5 },
     }, {
+      ...DEFAULT_ROUTER_POLICY,
       premium_model_ids: ["virtual/auto-best"],
       premium_allowed_groups: ["admin"],
       premium_daily_cost_limit: 1,

@@ -553,6 +553,68 @@
                                         <input type="number" step="0.0001" x-model="virtualRouterPolicyDraft.premium_monthly_cost_limit" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
                                     </div>
                                 </div>
+                                <div class="mt-6 rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
+                                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                                        <div>
+                                            <h4 class="text-xs font-black uppercase tracking-widest">Hybrid Classifier</h4>
+                                            <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Optional LLM classifier for low-confidence Thai/English prompts. Off by default.</p>
+                                        </div>
+                                        <label class="flex items-center gap-2 text-xs font-bold">
+                                            <input type="checkbox" x-model="virtualRouterPolicyDraft.hybrid_classifier_enabled" class="rounded border-slate-300">
+                                            Enable hybrid
+                                        </label>
+                                    </div>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div>
+                                            <label class="text-[10px] uppercase text-slate-400 font-bold">Classifier Model</label>
+                                            <input type="text" x-model="virtualRouterPolicyDraft.hybrid_classifier_model" placeholder="openai/gpt-4.1-nano" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono">
+                                        </div>
+                                        <div>
+                                            <label class="text-[10px] uppercase text-slate-400 font-bold">Low-confidence Threshold (0-1)</label>
+                                            <input type="number" min="0" max="1" step="0.01" x-model="virtualRouterPolicyDraft.hybrid_confidence_threshold" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mt-6 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-4">
+                                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                        <div>
+                                            <h4 class="text-xs font-black uppercase tracking-widest">Rule Builder</h4>
+                                            <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Admin-configurable Thai/English routing signals.</p>
+                                        </div>
+                                        <button @click="addRouterRuleDraft" class="px-3 py-2 rounded-lg text-[10px] font-black uppercase border border-slate-300 dark:border-slate-700">Add Rule</button>
+                                    </div>
+                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        <div>
+                                            <label class="text-[10px] uppercase text-slate-400 font-bold">Premium Keyword Score</label>
+                                            <input type="number" step="0.1" min="0" x-model="routerRulesDraft.premium_keyword_score" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-[10px] uppercase text-slate-400 font-bold">Long Context Tokens</label>
+                                            <input type="number" min="1" x-model="routerRulesDraft.long_context_tokens" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-[10px] uppercase text-slate-400 font-bold">Premium Prompt Tokens</label>
+                                            <input type="number" min="1" x-model="routerRulesDraft.premium_prompt_tokens" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
+                                        </div>
+                                    </div>
+                                    <div class="space-y-3 max-h-[420px] overflow-auto pr-2">
+                                        <template x-for="(rule, index) in routerRulesDraft.signal_rules" :key="rule.label + '-' + index">
+                                            <div class="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-3">
+                                                <div class="flex items-center justify-between gap-3">
+                                                    <div class="text-[10px] uppercase tracking-widest text-slate-400 font-black">Signal Rule</div>
+                                                    <button @click="removeRouterRuleDraft(index)" class="text-[10px] font-black uppercase text-rose-500">Remove</button>
+                                                </div>
+                                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                    <input type="text" x-model="rule.label" placeholder="security" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono">
+                                                    <input type="number" min="0" step="0.1" x-model="rule.weight" placeholder="weight" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
+                                                    <label class="flex items-center gap-2 text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2"><input type="checkbox" x-model="rule.coding"> Coding signal</label>
+                                                </div>
+                                                <input type="text" x-model="rule.description" placeholder="Description" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
+                                                <textarea x-model="rule.keywordsText" rows="4" placeholder="One Thai/English keyword per line" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
                                 <div class="mt-6 rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 p-4 space-y-4">
                                     <div class="flex items-center justify-between gap-3">
                                         <div>
