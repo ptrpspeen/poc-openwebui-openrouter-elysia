@@ -4,7 +4,7 @@
             return {
                 ...reportsModule,
                 ...policiesModule,
-                view: 'overview', systemTab: 'router', darkMode: localStorage.getItem('theme') === 'dark', adminKey: localStorage.getItem('adminKey') || '', keyInput: '', loading: false,
+                view: 'overview', systemTab: 'router', routerPanel: 'models', darkMode: localStorage.getItem('theme') === 'dark', adminKey: localStorage.getItem('adminKey') || '', keyInput: '', loading: false,
                 users: [], policies: [], groupPolicies: [], webuiGroups: [], usage: [],
                 systemHealth: { status: 'unknown', checks: {} },
                 systemLogs: [],
@@ -29,6 +29,12 @@
                     { id: 'health', label: 'Health', icon: 'fa-solid fa-heart-pulse', hint: 'Runtime dependency status' },
                     { id: 'config', label: 'Config', icon: 'fa-solid fa-code', hint: 'Raw config editor' },
                     { id: 'runtime', label: 'Logs', icon: 'fa-solid fa-terminal', hint: 'System runtime logs' },
+                ],
+                routerPanels: [
+                    { id: 'models', label: 'Models', icon: 'fa-solid fa-layer-group', hint: 'Virtual model strategies and candidates' },
+                    { id: 'rules', label: 'Signals', icon: 'fa-solid fa-wave-square', hint: 'Thai/English rule builder and route effects' },
+                    { id: 'policy', label: 'Policy', icon: 'fa-solid fa-shield-halved', hint: 'Premium gate and hybrid classifier' },
+                    { id: 'preview', label: 'Preview', icon: 'fa-solid fa-flask', hint: 'Try a prompt and inspect the decision' },
                 ],
                 stats: { total_users: 0, total_policies: 0, total_tokens: 0, total_cost: 0, total_requests: 0, last_24h: { tokens: 0, cost: 0, requests: 0, avg_latency_ms: 0, p95_latency_ms: 0, max_latency_ms: 0 }, top_models: [], top_users: [] },
                 performance: { summary: {}, recent: [] },
@@ -153,6 +159,44 @@
                 },
                 parseLines(value) {
                     return String(value || '').split(/\n+/).map(v => v.trim()).filter(Boolean);
+                },
+                candidateRole(strategy, index) {
+                    const roles = {
+                        cheap_first: ['default cheap route', 'fallback', 'fallback'],
+                        balanced: ['default route', 'fallback / light route', 'premium reasoning route'],
+                        premium: ['always selected', 'fallback', 'fallback'],
+                        code: ['coding route', 'non-code fallback', 'premium coding/reasoning route'],
+                        long_context: ['long-context route', 'normal-context route', 'fallback'],
+                    };
+                    return (roles[strategy] || [])[index] || `candidate ${index + 1}`;
+                },
+                candidateLines(model) {
+                    return this.parseLines(model?.candidatesText).map((candidate, index) => ({ candidate, role: this.candidateRole(model.strategy, index) }));
+                },
+                strategyDescription(strategy) {
+                    const map = {
+                        cheap_first: 'Always selects candidate #1. Best for low-cost lightweight tasks.',
+                        balanced: 'Selects candidate #3 when premium reasoning is true, otherwise candidate #1.',
+                        premium: 'Always selects candidate #1 and is usually protected by premium gate.',
+                        code: 'Coding signals select candidate #1; premium reasoning selects candidate #3; otherwise candidate #2.',
+                        long_context: 'Long-context signals select candidate #1; normal context selects candidate #2.',
+                    };
+                    return map[strategy] || 'Unknown strategy';
+                },
+                ruleEffectText(rule) {
+                    const weight = Number(rule?.weight || 0);
+                    const parts = [];
+                    if (weight > 0) parts.push(`adds +${weight} to premium score`);
+                    else parts.push('does not increase premium score');
+                    if (rule?.coding) parts.push('marks request as coding');
+                    parts.push(`premium if total score ≥ ${this.routerRulesDraft.premium_keyword_score}`);
+                    return parts.join(' · ');
+                },
+                ruleEffectClass(rule) {
+                    if (rule?.coding && Number(rule?.weight || 0) > 0) return 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900/60 dark:bg-indigo-950/20 dark:text-indigo-300';
+                    if (rule?.coding) return 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/20 dark:text-sky-300';
+                    if (Number(rule?.weight || 0) > 0) return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300';
+                    return 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-400';
                 },
                 validateVirtualRouterDrafts({ requirePrompt = false } = {}) {
                     const errors = [];

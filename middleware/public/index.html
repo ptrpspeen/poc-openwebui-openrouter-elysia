@@ -510,7 +510,29 @@
                                     </div>
                                     <div x-show="configValidation.success" class="rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/20 p-3 text-xs text-emerald-700 dark:text-emerald-300 font-bold" x-text="configValidation.success"></div>
                                 </div>
-                                <div class="space-y-4 max-h-[460px] overflow-auto pr-2">
+                                <div class="mb-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
+                                    <template x-for="panel in routerPanels" :key="panel.id">
+                                        <button @click="routerPanel = panel.id" class="rounded-2xl border p-4 text-left transition-all" :class="routerPanel === panel.id ? 'luxury-gradient text-white border-transparent shadow-lg' : 'bg-white/60 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 hover:border-indigo-300'">
+                                            <div class="flex items-center gap-2 text-xs font-black uppercase tracking-widest"><i :class="panel.icon"></i><span x-text="panel.label"></span></div>
+                                            <div class="text-[10px] opacity-75 mt-1" x-text="panel.hint"></div>
+                                        </button>
+                                    </template>
+                                </div>
+                                <div class="mb-6 grid grid-cols-1 lg:grid-cols-3 gap-3 text-xs">
+                                    <div class="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white/50 dark:bg-slate-900/30">
+                                        <div class="font-black uppercase tracking-widest text-[10px] text-slate-400 mb-1">Signal → Premium</div>
+                                        <div>Rule weights add to <span class="font-mono">keywordScore</span>. If score reaches the threshold, balanced/code routes use premium candidate.</div>
+                                    </div>
+                                    <div class="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white/50 dark:bg-slate-900/30">
+                                        <div class="font-black uppercase tracking-widest text-[10px] text-slate-400 mb-1">Coding Signal</div>
+                                        <div>Rules marked <b>coding</b> steer <span class="font-mono">auto-code</span> to its coding candidate even if premium score is low.</div>
+                                    </div>
+                                    <div class="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white/50 dark:bg-slate-900/30">
+                                        <div class="font-black uppercase tracking-widest text-[10px] text-slate-400 mb-1">Hybrid</div>
+                                        <div>LLM signal only runs for low-confidence prompts when enabled; timeout/cache protect the hot path.</div>
+                                    </div>
+                                </div>
+                                <div x-show="routerPanel === 'models'" x-transition class="space-y-4 max-h-[560px] overflow-auto pr-2">
                                     <template x-for="(model, index) in virtualModelsDraft" :key="model.id + '-' + index">
                                         <div class="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-3">
                                             <div class="flex items-center justify-between gap-3">
@@ -530,12 +552,20 @@
                                                     <option value="code">code</option>
                                                     <option value="long_context">long_context</option>
                                                 </select>
-                                                <textarea x-model="model.candidatesText" rows="4" placeholder="One candidate model per line" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
+                                                <div>
+                                                    <textarea x-model="model.candidatesText" rows="4" placeholder="One candidate model per line" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
+                                                    <div class="mt-2 space-y-1">
+                                                        <template x-for="line in candidateLines(model)" :key="line.candidate">
+                                                            <div class="flex items-start justify-between gap-2 rounded-lg bg-slate-50 dark:bg-slate-900/50 px-2 py-1 text-[10px]"><span class="font-mono break-all" x-text="line.candidate"></span><span class="text-slate-400 shrink-0" x-text="line.role"></span></div>
+                                                        </template>
+                                                    </div>
+                                                </div>
                                             </div>
+                                            <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 px-3 py-2 text-xs text-slate-500 dark:text-slate-400" x-text="strategyDescription(model.strategy)"></div>
                                         </div>
                                     </template>
                                 </div>
-                                <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div x-show="routerPanel === 'policy'" x-transition class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                         <label class="text-[10px] uppercase text-slate-400 font-bold">Premium Virtual Model IDs</label>
                                         <textarea x-model="virtualRouterPolicyDraft.premium_model_ids" rows="4" placeholder="One virtual model id per line" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
@@ -553,7 +583,7 @@
                                         <input type="number" step="0.0001" x-model="virtualRouterPolicyDraft.premium_monthly_cost_limit" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
                                     </div>
                                 </div>
-                                <div class="mt-6 rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
+                                <div x-show="routerPanel === 'policy'" x-transition class="mt-6 rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
                                     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
                                         <div>
                                             <h4 class="text-xs font-black uppercase tracking-widest">Hybrid Classifier</h4>
@@ -583,7 +613,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="mt-6 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-4">
+                                <div x-show="routerPanel === 'rules'" x-transition class="mt-6 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-4">
                                     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                                         <div>
                                             <h4 class="text-xs font-black uppercase tracking-widest">Rule Builder</h4>
@@ -605,6 +635,11 @@
                                             <input type="number" min="1" x-model="routerRulesDraft.premium_prompt_tokens" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
                                         </div>
                                     </div>
+                                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 text-xs">
+                                        <div class="rounded-2xl bg-white/60 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 p-4"><div class="font-black uppercase tracking-widest text-[10px] text-slate-400 mb-1">Balanced Models</div><div>Rule score ≥ threshold → candidate #3. Otherwise candidate #1.</div></div>
+                                        <div class="rounded-2xl bg-white/60 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 p-4"><div class="font-black uppercase tracking-widest text-[10px] text-slate-400 mb-1">Code Models</div><div>Coding signal → candidate #1. Premium score/LLM complex → candidate #3. Neither → candidate #2.</div></div>
+                                        <div class="rounded-2xl bg-white/60 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 p-4"><div class="font-black uppercase tracking-widest text-[10px] text-slate-400 mb-1">Long Context</div><div>Prompt tokens ≥ long-context threshold or ≥12 messages → candidate #1.</div></div>
+                                    </div>
                                     <div class="space-y-3 max-h-[420px] overflow-auto pr-2">
                                         <template x-for="(rule, index) in routerRulesDraft.signal_rules" :key="rule.label + '-' + index">
                                             <div class="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-3">
@@ -619,11 +654,12 @@
                                                 </div>
                                                 <input type="text" x-model="rule.description" placeholder="Description" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
                                                 <textarea x-model="rule.keywordsText" rows="4" placeholder="One Thai/English keyword per line" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
+                                                <div class="rounded-xl border px-3 py-2 text-[11px] font-bold" :class="ruleEffectClass(rule)" x-text="ruleEffectText(rule)"></div>
                                             </div>
                                         </template>
                                     </div>
                                 </div>
-                                <div class="mt-6 rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 p-4 space-y-4">
+                                <div x-show="routerPanel === 'preview'" x-transition class="mt-6 rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 p-4 space-y-4">
                                     <div class="flex items-center justify-between gap-3">
                                         <div>
                                             <h4 class="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300">Route Decision Preview</h4>
