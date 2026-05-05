@@ -84,6 +84,8 @@ const CONFIG_DEFAULTS: Partial<Record<(typeof CONFIG_KEYS)[number], string>> = {
     hybrid_classifier_enabled: false,
     hybrid_classifier_model: "openai/gpt-4.1-nano",
     hybrid_confidence_threshold: 0.55,
+    hybrid_classifier_timeout_ms: 1000,
+    hybrid_classifier_cache_ttl_ms: 300000,
   }),
   VIRTUAL_ROUTER_RULES_JSON: JSON.stringify({
     premium_keyword_score: 2,
@@ -200,6 +202,12 @@ function validateVirtualRouterConfigJson(raw: string) {
   if (parsed.hybrid_confidence_threshold != null) {
     const value = Number(parsed.hybrid_confidence_threshold);
     if (!Number.isFinite(value) || value < 0 || value > 1) throw new Error("hybrid_confidence_threshold must be between 0 and 1");
+  }
+  for (const key of ["hybrid_classifier_timeout_ms", "hybrid_classifier_cache_ttl_ms"]) {
+    if (parsed[key] != null) {
+      const value = Number(parsed[key]);
+      if (!Number.isFinite(value) || value < 0) throw new Error(`${key} must be a non-negative number`);
+    }
   }
 }
 

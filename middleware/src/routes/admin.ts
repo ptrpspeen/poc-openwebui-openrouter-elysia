@@ -29,7 +29,7 @@ import {
   REQUEST_LOG_SAMPLE_RATE,
 } from "../services/quota";
 import { reportRoutes } from "./reports";
-import { parseVirtualModelsConfig, resolveVirtualModelWithDefinitions } from "../services/router";
+import { parseVirtualModelsConfig, resolveVirtualModelWithHybridDefinitions } from "../services/router";
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 
@@ -212,9 +212,12 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
       tools: body?.tools,
     };
     const originalRulesJson = runtimeConfig.VIRTUAL_ROUTER_RULES_JSON;
+    const originalRouterConfigJson = runtimeConfig.VIRTUAL_ROUTER_CONFIG_JSON;
     if (body?.routerRulesJson) runtimeConfig.VIRTUAL_ROUTER_RULES_JSON = String(body.routerRulesJson);
-    const decision = resolveVirtualModelWithDefinitions(requestedModel, requestBody, definitions);
+    if (body?.routerConfigJson) runtimeConfig.VIRTUAL_ROUTER_CONFIG_JSON = String(body.routerConfigJson);
+    const decision = await resolveVirtualModelWithHybridDefinitions(requestedModel, requestBody, definitions);
     runtimeConfig.VIRTUAL_ROUTER_RULES_JSON = originalRulesJson;
+    runtimeConfig.VIRTUAL_ROUTER_CONFIG_JSON = originalRouterConfigJson;
     return {
       success: true,
       requested_model: decision.requestedModel,

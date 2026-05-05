@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { runtimeConfig } from "./config";
 import {
+  classifyRouteWithHybridLLM,
   DEFAULT_ROUTER_POLICY,
   buildVirtualModelCatalogEntries,
   evaluatePremiumModelAccess,
@@ -11,14 +12,17 @@ import {
   isVirtualModel,
   parseVirtualModelsConfig,
   resolveVirtualModel,
+  resolveVirtualModelHybrid,
   resolveVirtualModelWithDefinitions,
 } from "./router";
 
+const originalOpenRouterApiKey = runtimeConfig.OPENROUTER_API_KEY;
 const originalVirtualModelsJson = runtimeConfig.VIRTUAL_MODELS_JSON;
 const originalRouterConfigJson = runtimeConfig.VIRTUAL_ROUTER_CONFIG_JSON;
 const originalRouterRulesJson = runtimeConfig.VIRTUAL_ROUTER_RULES_JSON;
 
 afterEach(() => {
+  runtimeConfig.OPENROUTER_API_KEY = originalOpenRouterApiKey;
   runtimeConfig.VIRTUAL_MODELS_JSON = originalVirtualModelsJson;
   runtimeConfig.VIRTUAL_ROUTER_CONFIG_JSON = originalRouterConfigJson;
   runtimeConfig.VIRTUAL_ROUTER_RULES_JSON = originalRouterRulesJson;
@@ -162,6 +166,38 @@ describe("router helpers", () => {
     expect(config.hybrid_classifier_enabled).toBe(true);
     expect(config.hybrid_classifier_model).toBe("openai/gpt-4.1-mini");
     expect(config.hybrid_confidence_threshold).toBe(0.7);
+  });
+
+  it("uses hybrid LLM signals for low-confidence prompts when enabled", async () => {
+    const originalFetch = globalThis.fetch;
+    runtimeConfig.OPENROUTER_API_KEY = "test-key";
+    runtimeConfig.VIRTUAL_ROUTER_CONFIG_JSON = JSON.stringify({
+      ...DEFAULT_ROUTER_POLICY,
+      hybrid_classifier_enabled: true,
+      hybrid_classifier_model: "openai/gpt-4.1-nano",
+      hybrid_confidence_threshold: 0.55,
+      hybrid_classifier_timeout_ms: 1000,
+      hybrid_classifier_cache_ttl_ms: 0,
+    });
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({ task_type: "security", complexity: "complex", needs_code: false, needs_long_context: false, needs_premium_reasoning: true, confidence: 0.91, reason: "Ambiguous Thai prompt but security-critical." }) } }],
+    }), { status: 200, headers: { "content-type": "application/json" } })) as any;
+
+    const resolution = await resolveVirtualModelHybrid("virtual/auto-balanced", {
+      messages: [{ role: "user", content: "ช่วยดูเรื่องนี้ให้หน่อย" }],
+    });
+
+    globalThis.fetch = originalFetch;
+    expect(resolution.resolvedModel).toBe("anthropic/claude-3.7-sonnet");
+    expect(resolution.signals.hybridClassifierUsed).toBe(true);
+    expect(resolution.signals.hybridTaskType).toBe("security");
+    expect(resolution.reason).toContain("hybrid_used");
+  });
+
+  it("keeps classifier disabled unless config enables it", async () => {
+    runtimeConfig.OPENROUTER_API_KEY = "test-key";
+    runtimeConfig.VIRTUAL_ROUTER_CONFIG_JSON = JSON.stringify(DEFAULT_ROUTER_POLICY);
+    expect(await classifyRouteWithHybridLLM({ messages: [{ role: "user", content: "ช่วยดูเรื่องนี้ให้หน่อย" }] })).toBe(null);
   });
 
   it("blocks premium virtual model when group gate fails", () => {

@@ -21,6 +21,12 @@ type TaskSignals = {
   matchedSignals: string[];
   confidence: number;
   hybridClassifierRecommended: boolean;
+  hybridClassifierUsed: boolean;
+  hybridClassifierModel?: string;
+  hybridTaskType?: string;
+  hybridComplexity?: string;
+  hybridConfidence?: number;
+  hybridReason?: string;
 };
 
 type RouterPolicyConfig = {
@@ -31,6 +37,18 @@ type RouterPolicyConfig = {
   hybrid_classifier_enabled: boolean;
   hybrid_classifier_model: string;
   hybrid_confidence_threshold: number;
+  hybrid_classifier_timeout_ms: number;
+  hybrid_classifier_cache_ttl_ms: number;
+};
+
+type HybridRouteClassification = {
+  task_type?: string;
+  complexity?: "simple" | "standard" | "complex" | string;
+  needs_code?: boolean;
+  needs_long_context?: boolean;
+  needs_premium_reasoning?: boolean;
+  confidence?: number;
+  reason?: string;
 };
 
 export type RouterSignalRule = {
@@ -105,6 +123,8 @@ export const DEFAULT_ROUTER_POLICY: RouterPolicyConfig = {
   hybrid_classifier_enabled: false,
   hybrid_classifier_model: "openai/gpt-4.1-nano",
   hybrid_confidence_threshold: 0.55,
+  hybrid_classifier_timeout_ms: 1000,
+  hybrid_classifier_cache_ttl_ms: 300000,
 };
 
 export const DEFAULT_ROUTER_RULES: RouterRulesConfig = {
@@ -207,6 +227,8 @@ export function getRouterPolicyConfig(): RouterPolicyConfig {
     hybrid_classifier_enabled: Boolean(parsed?.hybrid_classifier_enabled ?? DEFAULT_ROUTER_POLICY.hybrid_classifier_enabled),
     hybrid_classifier_model: String(parsed?.hybrid_classifier_model || DEFAULT_ROUTER_POLICY.hybrid_classifier_model),
     hybrid_confidence_threshold: Math.min(1, Math.max(0, parseNumber(parsed?.hybrid_confidence_threshold, DEFAULT_ROUTER_POLICY.hybrid_confidence_threshold))),
+    hybrid_classifier_timeout_ms: Math.max(100, parseNumber(parsed?.hybrid_classifier_timeout_ms, DEFAULT_ROUTER_POLICY.hybrid_classifier_timeout_ms)),
+    hybrid_classifier_cache_ttl_ms: Math.max(0, parseNumber(parsed?.hybrid_classifier_cache_ttl_ms, DEFAULT_ROUTER_POLICY.hybrid_classifier_cache_ttl_ms)),
   };
 }
 
@@ -294,6 +316,65 @@ function deriveTaskSignals(body: any): TaskSignals {
     matchedSignals: [...new Set([...matchedSignals, ...codingSignals])],
     confidence,
     hybridClassifierRecommended,
+    hybridClassifierUsed: false,
+  };
+}
+
+const hybridClassifierCache = new Map<string, { expiresAt: number; value: HybridRouteClassification | null }>();
+
+function hashForCache(value: string) {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16);
+}
+
+function normalizeHybridClassification(input: any): HybridRouteClassification | null {
+  if (!input || typeof input !== "object") return null;
+  const confidence = Math.min(1, Math.max(0, parseNumber(input.confidence, 0)));
+  return {
+    task_type: input.task_type ? String(input.task_type) : undefined,
+    complexity: input.complexity ? String(input.complexity) : undefined,
+    needs_code: Boolean(input.needs_code),
+    needs_long_context: Boolean(input.needs_long_context),
+    needs_premium_reasoning: Boolean(input.needs_premium_reasoning),
+    confidence,
+    reason: input.reason ? String(input.reason).slice(0, 500) : undefined,
+  };
+}
+
+function mergeHybridSignals(signals: TaskSignals, classification: HybridRouteClassification | null, policy: RouterPolicyConfig): TaskSignals {
+  if (!classification) return signals;
+  const hybridConfidence = Math.min(1, Math.max(0, classification.confidence || 0));
+  if (hybridConfidence < policy.hybrid_confidence_threshold) {
+    return {
+      ...signals,
+      hybridClassifierUsed: true,
+      hybridClassifierModel: policy.hybrid_classifier_model,
+      hybridTaskType: classification.task_type,
+      hybridComplexity: classification.complexity,
+      hybridConfidence,
+      hybridReason: classification.reason,
+    };
+  }
+  const matchedSignals = [...signals.matchedSignals];
+  if (classification.task_type) matchedSignals.push(`llm:${classification.task_type}`);
+  if (classification.complexity) matchedSignals.push(`llm_complexity:${classification.complexity}`);
+  return {
+    ...signals,
+    isCodingTask: signals.isCodingTask || Boolean(classification.needs_code),
+    needsLongContext: signals.needsLongContext || Boolean(classification.needs_long_context),
+    needsPremiumReasoning: signals.needsPremiumReasoning || Boolean(classification.needs_premium_reasoning) || classification.complexity === "complex",
+    matchedSignals: [...new Set(matchedSignals)],
+    confidence: Math.max(signals.confidence, hybridConfidence),
+    hybridClassifierUsed: true,
+    hybridClassifierModel: policy.hybrid_classifier_model,
+    hybridTaskType: classification.task_type,
+    hybridComplexity: classification.complexity,
+    hybridConfidence,
+    hybridReason: classification.reason,
   };
 }
 
@@ -314,13 +395,19 @@ function chooseCandidate(definition: VirtualModelDefinition, signals: TaskSignal
   }
 }
 
-export async function classifyRouteWithHybridLLM(body: any, policy = getRouterPolicyConfig()) {
+export async function classifyRouteWithHybridLLM(body: any, policy = getRouterPolicyConfig()): Promise<HybridRouteClassification | null> {
   if (!policy.hybrid_classifier_enabled || !runtimeConfig.OPENROUTER_API_KEY) return null;
   const text = extractText({ prompt: body?.prompt, input: body?.input, messages: body?.messages }).join("\n").slice(0, 4000);
   if (!text.trim()) return null;
+  const cacheKey = `${policy.hybrid_classifier_model}:${hashForCache(text)}`;
+  const cached = hybridClassifierCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), policy.hybrid_classifier_timeout_ms);
   try {
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
+      signal: controller.signal,
       headers: {
         Authorization: `Bearer ${runtimeConfig.OPENROUTER_API_KEY}`,
         "content-type": "application/json",
@@ -338,10 +425,16 @@ export async function classifyRouteWithHybridLLM(body: any, policy = getRouterPo
     });
     if (!response.ok) return null;
     const payload = await response.json();
-    return JSON.parse(payload?.choices?.[0]?.message?.content || "null");
+    const parsed = normalizeHybridClassification(JSON.parse(payload?.choices?.[0]?.message?.content || "null"));
+    if (policy.hybrid_classifier_cache_ttl_ms > 0) {
+      hybridClassifierCache.set(cacheKey, { value: parsed, expiresAt: Date.now() + policy.hybrid_classifier_cache_ttl_ms });
+    }
+    return parsed;
   } catch (error: any) {
     writeSystemLog("warn", "Hybrid route classifier failed; falling back to rules", { error: error?.message || String(error) });
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -458,7 +551,7 @@ export async function checkVirtualModelAccess(userId: string | null, requestedMo
   return evaluatePremiumModelAccess(requestedModel, groups, usage, premiumConfig);
 }
 
-export function resolveVirtualModelWithDefinitions(modelName: string, body: any, definitions: VirtualModelDefinition[]) {
+function buildRoutingDecision(modelName: string, body: any, definitions: VirtualModelDefinition[], signals: TaskSignals) {
   const definition = getVirtualModelMap(definitions).get(modelName);
   if (!definition) {
     return {
@@ -466,16 +559,19 @@ export function resolveVirtualModelWithDefinitions(modelName: string, body: any,
       resolvedModel: modelName,
       usedVirtualModel: false,
       reason: "raw_model_passthrough",
-      signals: deriveTaskSignals(body),
+      signals,
     };
   }
 
-  const signals = deriveTaskSignals(body);
   const resolvedModel = chooseCandidate(definition, signals);
   const reasons: string[] = [definition.strategy];
   if (signals.isCodingTask) reasons.push("coding_task");
   if (signals.needsLongContext) reasons.push("long_context");
   if (signals.needsPremiumReasoning) reasons.push("premium_reasoning");
+  if (signals.hybridClassifierRecommended) reasons.push("hybrid_recommended");
+  if (signals.hybridClassifierUsed) reasons.push("hybrid_used");
+  if (signals.hybridTaskType) reasons.push(`llm_task:${signals.hybridTaskType}`);
+  if (signals.hybridComplexity) reasons.push(`llm_complexity:${signals.hybridComplexity}`);
   if (signals.keywordScore > 0) reasons.push(`keyword_score:${signals.keywordScore}`);
   if (signals.promptTokens > 0) reasons.push(`prompt_tokens:${signals.promptTokens}`);
 
@@ -488,6 +584,24 @@ export function resolveVirtualModelWithDefinitions(modelName: string, body: any,
   };
 }
 
+export function resolveVirtualModelWithDefinitions(modelName: string, body: any, definitions: VirtualModelDefinition[]) {
+  return buildRoutingDecision(modelName, body, definitions, deriveTaskSignals(body));
+}
+
+export async function resolveVirtualModelWithHybridDefinitions(modelName: string, body: any, definitions: VirtualModelDefinition[]) {
+  const baseSignals = deriveTaskSignals(body);
+  const policy = getRouterPolicyConfig();
+  let signals = baseSignals;
+  if (policy.hybrid_classifier_enabled && baseSignals.hybridClassifierRecommended) {
+    signals = mergeHybridSignals(baseSignals, await classifyRouteWithHybridLLM(body, policy), policy);
+  }
+  return buildRoutingDecision(modelName, body, definitions, signals);
+}
+
 export function resolveVirtualModel(modelName: string, body: any) {
   return resolveVirtualModelWithDefinitions(modelName, body, getVirtualModels());
+}
+
+export async function resolveVirtualModelHybrid(modelName: string, body: any) {
+  return resolveVirtualModelWithHybridDefinitions(modelName, body, getVirtualModels());
 }

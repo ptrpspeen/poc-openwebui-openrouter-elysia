@@ -12,7 +12,7 @@
                 configDraft: {},
                 virtualModelsDraft: [],
                 routerRulesDraft: { premium_keyword_score: 2, long_context_tokens: 8000, premium_prompt_tokens: 4000, signal_rules: [] },
-                virtualRouterPolicyDraft: { premium_model_ids: [], premium_allowed_groups: [], premium_daily_cost_limit: 0, premium_monthly_cost_limit: 0, hybrid_classifier_enabled: false, hybrid_classifier_model: 'openai/gpt-4.1-nano', hybrid_confidence_threshold: 0.55 },
+                virtualRouterPolicyDraft: { premium_model_ids: [], premium_allowed_groups: [], premium_daily_cost_limit: 0, premium_monthly_cost_limit: 0, hybrid_classifier_enabled: false, hybrid_classifier_model: 'openai/gpt-4.1-nano', hybrid_confidence_threshold: 0.55, hybrid_classifier_timeout_ms: 1000, hybrid_classifier_cache_ttl_ms: 300000 },
                 configValidation: { errors: [], warnings: [], success: '' },
                 routePreview: {
                     model: 'virtual/auto-balanced',
@@ -191,6 +191,10 @@
                     }
                     const threshold = Number(this.virtualRouterPolicyDraft.hybrid_confidence_threshold ?? 0.55);
                     if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1) errors.push('hybrid_confidence_threshold must be between 0 and 1');
+                    ['hybrid_classifier_timeout_ms', 'hybrid_classifier_cache_ttl_ms'].forEach((key) => {
+                        const value = Number(this.virtualRouterPolicyDraft[key] ?? 0);
+                        if (!Number.isFinite(value) || value < 0) errors.push(`${key} must be a non-negative number`);
+                    });
 
                     if (this.configDraft.VIRTUAL_MODELS_JSON) {
                         try { JSON.parse(this.configDraft.VIRTUAL_MODELS_JSON); } catch (e) { errors.push(`VIRTUAL_MODELS_JSON is invalid JSON: ${e.message}`); }
@@ -241,7 +245,7 @@
                         this.routePreview.model = this.virtualModelsDraft[0]?.id || 'virtual/auto-balanced';
                     }
                     const policy = this.parseJsonConfigValue('VIRTUAL_ROUTER_CONFIG_JSON', {
-                        premium_model_ids: [], premium_allowed_groups: [], premium_daily_cost_limit: 0, premium_monthly_cost_limit: 0, hybrid_classifier_enabled: false, hybrid_classifier_model: 'openai/gpt-4.1-nano', hybrid_confidence_threshold: 0.55,
+                        premium_model_ids: [], premium_allowed_groups: [], premium_daily_cost_limit: 0, premium_monthly_cost_limit: 0, hybrid_classifier_enabled: false, hybrid_classifier_model: 'openai/gpt-4.1-nano', hybrid_confidence_threshold: 0.55, hybrid_classifier_timeout_ms: 1000, hybrid_classifier_cache_ttl_ms: 300000,
                     });
                     this.virtualRouterPolicyDraft = {
                         premium_model_ids: Array.isArray(policy.premium_model_ids) ? policy.premium_model_ids.join('\n') : '',
@@ -251,6 +255,8 @@
                         hybrid_classifier_enabled: Boolean(policy.hybrid_classifier_enabled),
                         hybrid_classifier_model: String(policy.hybrid_classifier_model || 'openai/gpt-4.1-nano'),
                         hybrid_confidence_threshold: Number(policy.hybrid_confidence_threshold ?? 0.55),
+                        hybrid_classifier_timeout_ms: Number(policy.hybrid_classifier_timeout_ms ?? 1000),
+                        hybrid_classifier_cache_ttl_ms: Number(policy.hybrid_classifier_cache_ttl_ms ?? 300000),
                     };
                     const rules = this.parseJsonConfigValue('VIRTUAL_ROUTER_RULES_JSON', { premium_keyword_score: 2, long_context_tokens: 8000, premium_prompt_tokens: 4000, signal_rules: [] });
                     this.routerRulesDraft = {
@@ -294,6 +300,8 @@
                         hybrid_classifier_enabled: Boolean(this.virtualRouterPolicyDraft.hybrid_classifier_enabled),
                         hybrid_classifier_model: String(this.virtualRouterPolicyDraft.hybrid_classifier_model || 'openai/gpt-4.1-nano').trim(),
                         hybrid_confidence_threshold: Number(this.virtualRouterPolicyDraft.hybrid_confidence_threshold ?? 0.55),
+                        hybrid_classifier_timeout_ms: Number(this.virtualRouterPolicyDraft.hybrid_classifier_timeout_ms ?? 1000),
+                        hybrid_classifier_cache_ttl_ms: Number(this.virtualRouterPolicyDraft.hybrid_classifier_cache_ttl_ms ?? 300000),
                     }, null, 2);
                     this.configDraft.VIRTUAL_ROUTER_RULES_JSON = JSON.stringify({
                         premium_keyword_score: Number(this.routerRulesDraft.premium_keyword_score ?? 2),
@@ -348,6 +356,7 @@
                                 max_tokens: Number(this.routePreview.max_tokens || 1024),
                                 virtualModelsJson: this.configDraft.VIRTUAL_MODELS_JSON,
                                 routerRulesJson: this.configDraft.VIRTUAL_ROUTER_RULES_JSON,
+                                routerConfigJson: this.configDraft.VIRTUAL_ROUTER_CONFIG_JSON,
                             }),
                         });
                         const payload = await response.json().catch(() => null);

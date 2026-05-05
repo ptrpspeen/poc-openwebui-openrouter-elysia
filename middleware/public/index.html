@@ -564,7 +564,7 @@
                                             Enable hybrid
                                         </label>
                                     </div>
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
                                         <div>
                                             <label class="text-[10px] uppercase text-slate-400 font-bold">Classifier Model</label>
                                             <input type="text" x-model="virtualRouterPolicyDraft.hybrid_classifier_model" placeholder="openai/gpt-4.1-nano" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono">
@@ -572,6 +572,14 @@
                                         <div>
                                             <label class="text-[10px] uppercase text-slate-400 font-bold">Low-confidence Threshold (0-1)</label>
                                             <input type="number" min="0" max="1" step="0.01" x-model="virtualRouterPolicyDraft.hybrid_confidence_threshold" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-[10px] uppercase text-slate-400 font-bold">Timeout ms</label>
+                                            <input type="number" min="100" step="100" x-model="virtualRouterPolicyDraft.hybrid_classifier_timeout_ms" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-[10px] uppercase text-slate-400 font-bold">Cache TTL ms</label>
+                                            <input type="number" min="0" step="1000" x-model="virtualRouterPolicyDraft.hybrid_classifier_cache_ttl_ms" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
                                         </div>
                                     </div>
                                 </div>

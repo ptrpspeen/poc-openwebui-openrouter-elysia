@@ -11,7 +11,7 @@ import {
   logRequestPerformance,
   streamWithUsageTracking,
 } from "../services/quota";
-import { checkVirtualModelAccess, injectVirtualModelsIntoCatalog, resolveVirtualModel } from "../services/router";
+import { checkVirtualModelAccess, injectVirtualModelsIntoCatalog, resolveVirtualModelHybrid } from "../services/router";
 
 const OPENROUTER_BASE = "https://openrouter.ai/api";
 
@@ -124,7 +124,7 @@ export const proxyRoutes = new Elysia()
     let body: any = null;
     let modelName = "unknown";
     let requestedModelName = "unknown";
-    let routingDecision: ReturnType<typeof resolveVirtualModel> | null = null;
+    let routingDecision: Awaited<ReturnType<typeof resolveVirtualModelHybrid>> | null = null;
     if (request.method === "POST" && request.headers.get("content-type")?.includes("application/json")) {
       body = await request.json();
       requestedModelName = body.model || "unknown";
@@ -149,7 +149,7 @@ export const proxyRoutes = new Elysia()
           usage: virtualAccess.usage || null,
         };
       }
-      routingDecision = resolveVirtualModel(requestedModelName, body);
+      routingDecision = await resolveVirtualModelHybrid(requestedModelName, body);
       modelName = routingDecision.resolvedModel || requestedModelName;
       if (routingDecision.usedVirtualModel) {
         body.model = modelName;
