@@ -544,21 +544,21 @@
                         <div x-show="systemTab === 'router'" x-transition class="glass p-6 rounded-2xl shadow-xl">
                                 <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
                                     <div>
-                                        <h3 class="text-sm font-black uppercase tracking-widest">Virtual Router Control</h3>
-                                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Edit → validate → preview → save, all in one workflow.</p>
+                                        <h3 class="text-sm font-black uppercase tracking-widest">ควบคุม Virtual Router</h3>
+                                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">แก้ไข → ตรวจสอบ → ทดลอง route → บันทึก ใน workflow เดียว</p>
                                     </div>
                                     <div class="flex flex-wrap gap-2">
-                                        <button @click="addVirtualModelDraft" class="px-3 py-2 rounded-lg text-[10px] font-black uppercase border border-slate-300 dark:border-slate-700">Add Virtual Model</button>
-                                        <button @click="saveConfig" class="luxury-gradient px-4 py-2 rounded-xl text-[10px] font-black uppercase text-white">Validate + Save</button>
+                                        <button @click="addVirtualModelDraft" class="px-3 py-2 rounded-lg text-[10px] font-black uppercase border border-slate-300 dark:border-slate-700">เพิ่ม Virtual Model</button>
+                                        <button @click="saveConfig" class="luxury-gradient px-4 py-2 rounded-xl text-[10px] font-black uppercase text-white">ตรวจสอบ + บันทึก</button>
                                     </div>
                                 </div>
                                 <div x-show="configValidation.errors.length || configValidation.warnings.length || configValidation.success" class="mb-4 space-y-2">
                                     <div x-show="configValidation.errors.length" class="rounded-xl border border-rose-200 bg-rose-50 dark:border-rose-900/60 dark:bg-rose-950/20 p-3 text-xs text-rose-700 dark:text-rose-300">
-                                        <div class="font-black uppercase tracking-widest text-[10px] mb-2">Validation errors — config not saved</div>
+                                        <div class="font-black uppercase tracking-widest text-[10px] mb-2">พบข้อผิดพลาด — ยังไม่บันทึก config</div>
                                         <ul class="list-disc pl-4 space-y-1"><template x-for="error in configValidation.errors" :key="error"><li x-text="error"></li></template></ul>
                                     </div>
                                     <div x-show="configValidation.warnings.length" class="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/20 p-3 text-xs text-amber-700 dark:text-amber-300">
-                                        <div class="font-black uppercase tracking-widest text-[10px] mb-2">Warnings</div>
+                                        <div class="font-black uppercase tracking-widest text-[10px] mb-2">คำเตือน</div>
                                         <ul class="list-disc pl-4 space-y-1"><template x-for="warning in configValidation.warnings" :key="warning"><li x-text="warning"></li></template></ul>
                                     </div>
                                     <div x-show="configValidation.success" class="rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/20 p-3 text-xs text-emerald-700 dark:text-emerald-300 font-bold" x-text="configValidation.success"></div>
@@ -574,15 +574,15 @@
                                 <div class="mb-6 grid grid-cols-1 lg:grid-cols-3 gap-3 text-xs">
                                     <div class="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white/50 dark:bg-slate-900/30">
                                         <div class="font-black uppercase tracking-widest text-[10px] text-slate-400 mb-1">Signal → Premium</div>
-                                        <div>Rule weights add to <span class="font-mono">keywordScore</span>. If score reaches the threshold, balanced/code routes use premium candidate.</div>
+                                        <div>น้ำหนักของ rule จะถูกรวมเป็น <span class="font-mono">keywordScore</span>. ถ้าคะแนนถึง threshold ระบบจะเลือก candidate ฝั่ง premium สำหรับ balanced/code route</div>
                                     </div>
                                     <div class="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white/50 dark:bg-slate-900/30">
-                                        <div class="font-black uppercase tracking-widest text-[10px] text-slate-400 mb-1">Coding Signal</div>
-                                        <div>Rules marked <b>coding</b> steer <span class="font-mono">auto-code</span> to its coding candidate even if premium score is low.</div>
+                                        <div class="font-black uppercase tracking-widest text-[10px] text-slate-400 mb-1">สัญญาณงานเขียนโค้ด</div>
+                                        <div>Rule ที่ติ๊ก <b>coding</b> จะพา <span class="font-mono">auto-code</span> ไป candidate สำหรับงาน code แม้ premium score จะต่ำ</div>
                                     </div>
                                     <div class="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white/50 dark:bg-slate-900/30">
-                                        <div class="font-black uppercase tracking-widest text-[10px] text-slate-400 mb-1">Hybrid</div>
-                                        <div>LLM signal only runs for low-confidence prompts when enabled; timeout/cache protect the hot path.</div>
+                                        <div class="font-black uppercase tracking-widest text-[10px] text-slate-400 mb-1">Hybrid Classifier</div>
+                                        <div>ใช้ LLM ช่วยจำแนกเฉพาะ prompt ที่ rule-based ยังไม่มั่นใจ และเปิดใช้งานเท่านั้น; timeout/cache ช่วยไม่ให้กระทบ path หลัก</div>
                                     </div>
                                 </div>
                                 <div x-show="routerPanel === 'models'" x-transition class="space-y-4 max-h-[560px] overflow-auto pr-2">
@@ -590,13 +590,13 @@
                                         <div class="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-3">
                                             <div class="flex items-center justify-between gap-3">
                                                 <div class="text-[10px] uppercase tracking-widest text-slate-400 font-black">Virtual Model</div>
-                                                <button @click="removeVirtualModelDraft(index)" class="text-[10px] font-black uppercase text-rose-500">Remove</button>
+                                                <button @click="removeVirtualModelDraft(index)" class="text-[10px] font-black uppercase text-rose-500">ลบ</button>
                                             </div>
                                             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                                                 <input type="text" x-model="model.id" placeholder="virtual/auto-balanced" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
-                                                <input type="text" x-model="model.name" placeholder="Display name" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
+                                                <input type="text" x-model="model.name" placeholder="ชื่อที่แสดง" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
                                             </div>
-                                            <input type="text" x-model="model.description" placeholder="Description" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
+                                            <input type="text" x-model="model.description" placeholder="คำอธิบาย" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
                                             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                                                 <select x-model="model.strategy" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
                                                     <option value="cheap_first">cheap_first</option>
@@ -606,7 +606,7 @@
                                                     <option value="long_context">long_context</option>
                                                 </select>
                                                 <div>
-                                                    <textarea x-model="model.candidatesText" rows="4" placeholder="One candidate model per line" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
+                                                    <textarea x-model="model.candidatesText" rows="4" placeholder="ใส่ candidate model บรรทัดละ 1 ตัว" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
                                                     <div class="mt-2 space-y-1">
                                                         <template x-for="line in candidateLines(model)" :key="line.candidate">
                                                             <div class="flex items-start justify-between gap-2 rounded-lg bg-slate-50 dark:bg-slate-900/50 px-2 py-1 text-[10px]"><span class="font-mono break-all" x-text="line.candidate"></span><span class="text-slate-400 shrink-0" x-text="line.role"></span></div>
@@ -620,19 +620,19 @@
                                 </div>
                                 <div x-show="routerPanel === 'policy'" x-transition class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
-                                        <label class="text-[10px] uppercase text-slate-400 font-bold">Premium Virtual Model IDs</label>
-                                        <textarea x-model="virtualRouterPolicyDraft.premium_model_ids" rows="4" placeholder="One virtual model id per line" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
+                                        <label class="text-[10px] uppercase text-slate-400 font-bold">Virtual Model ที่ถือเป็น Premium</label>
+                                        <textarea x-model="virtualRouterPolicyDraft.premium_model_ids" rows="4" placeholder="ใส่ virtual model id บรรทัดละ 1 รายการ" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
                                     </div>
                                     <div>
-                                        <label class="text-[10px] uppercase text-slate-400 font-bold">Allowed OpenWebUI Groups</label>
-                                        <textarea x-model="virtualRouterPolicyDraft.premium_allowed_groups" rows="4" placeholder="One group per line" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
+                                        <label class="text-[10px] uppercase text-slate-400 font-bold">กลุ่ม OpenWebUI ที่อนุญาต</label>
+                                        <textarea x-model="virtualRouterPolicyDraft.premium_allowed_groups" rows="4" placeholder="ใส่ชื่อกลุ่มบรรทัดละ 1 กลุ่ม" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
                                     </div>
                                     <div>
-                                        <label class="text-[10px] uppercase text-slate-400 font-bold">Premium Daily Cost Limit</label>
+                                        <label class="text-[10px] uppercase text-slate-400 font-bold">เพดานค่าใช้จ่าย Premium ต่อวัน</label>
                                         <input type="number" step="0.0001" x-model="virtualRouterPolicyDraft.premium_daily_cost_limit" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
                                     </div>
                                     <div>
-                                        <label class="text-[10px] uppercase text-slate-400 font-bold">Premium Monthly Cost Limit</label>
+                                        <label class="text-[10px] uppercase text-slate-400 font-bold">เพดานค่าใช้จ่าย Premium ต่อเดือน</label>
                                         <input type="number" step="0.0001" x-model="virtualRouterPolicyDraft.premium_monthly_cost_limit" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
                                     </div>
                                 </div>
@@ -640,28 +640,28 @@
                                     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
                                         <div>
                                             <h4 class="text-xs font-black uppercase tracking-widest">Hybrid Classifier</h4>
-                                            <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Optional LLM classifier for low-confidence Thai/English prompts. Off by default.</p>
+                                            <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">ตัวจำแนกด้วย LLM สำหรับ prompt ไทย/อังกฤษที่ rule-based ยังไม่มั่นใจ ปิดไว้เป็นค่าเริ่มต้น</p>
                                         </div>
                                         <label class="flex items-center gap-2 text-xs font-bold">
                                             <input type="checkbox" x-model="virtualRouterPolicyDraft.hybrid_classifier_enabled" class="rounded border-slate-300">
-                                            Enable hybrid
+                                            เปิด hybrid
                                         </label>
                                     </div>
                                     <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
                                         <div>
-                                            <label class="text-[10px] uppercase text-slate-400 font-bold">Classifier Model</label>
+                                            <label class="text-[10px] uppercase text-slate-400 font-bold">โมเดลสำหรับจำแนก</label>
                                             <input type="text" x-model="virtualRouterPolicyDraft.hybrid_classifier_model" placeholder="openai/gpt-4.1-nano" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono">
                                         </div>
                                         <div>
-                                            <label class="text-[10px] uppercase text-slate-400 font-bold">Low-confidence Threshold (0-1)</label>
+                                            <label class="text-[10px] uppercase text-slate-400 font-bold">threshold ความไม่มั่นใจ (0-1)</label>
                                             <input type="number" min="0" max="1" step="0.01" x-model="virtualRouterPolicyDraft.hybrid_confidence_threshold" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
                                         </div>
                                         <div>
-                                            <label class="text-[10px] uppercase text-slate-400 font-bold">Timeout ms</label>
+                                            <label class="text-[10px] uppercase text-slate-400 font-bold">เวลารอสูงสุด (ms)</label>
                                             <input type="number" min="100" step="100" x-model="virtualRouterPolicyDraft.hybrid_classifier_timeout_ms" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
                                         </div>
                                         <div>
-                                            <label class="text-[10px] uppercase text-slate-400 font-bold">Cache TTL ms</label>
+                                            <label class="text-[10px] uppercase text-slate-400 font-bold">อายุ cache (ms)</label>
                                             <input type="number" min="0" step="1000" x-model="virtualRouterPolicyDraft.hybrid_classifier_cache_ttl_ms" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
                                         </div>
                                     </div>
@@ -669,49 +669,49 @@
                                 <div x-show="routerPanel === 'rules'" x-transition class="mt-6 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-4">
                                     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                                         <div>
-                                            <h4 class="text-xs font-black uppercase tracking-widest">Rule Builder</h4>
-                                            <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Admin-configurable Thai/English routing signals.</p>
+                                            <h4 class="text-xs font-black uppercase tracking-widest">ตัวสร้างกฎ Signal</h4>
+                                            <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">กำหนด keyword signal ภาษาไทย/อังกฤษเพื่อควบคุมการ route ได้จากหน้า admin</p>
                                         </div>
-                                        <button @click="addRouterRuleDraft" class="px-3 py-2 rounded-lg text-[10px] font-black uppercase border border-slate-300 dark:border-slate-700">Add Rule</button>
+                                        <button @click="addRouterRuleDraft" class="px-3 py-2 rounded-lg text-[10px] font-black uppercase border border-slate-300 dark:border-slate-700">เพิ่ม Rule</button>
                                     </div>
                                     <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                                         <div>
-                                            <label class="text-[10px] uppercase text-slate-400 font-bold">Premium Keyword Score</label>
+                                            <label class="text-[10px] uppercase text-slate-400 font-bold">คะแนน keyword สำหรับ Premium</label>
                                             <input type="number" step="0.1" min="0" x-model="routerRulesDraft.premium_keyword_score" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
                                         </div>
                                         <div>
-                                            <label class="text-[10px] uppercase text-slate-400 font-bold">Long Context Tokens</label>
+                                            <label class="text-[10px] uppercase text-slate-400 font-bold">จำนวน token สำหรับ Long context</label>
                                             <input type="number" min="1" x-model="routerRulesDraft.long_context_tokens" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
                                         </div>
                                         <div>
-                                            <label class="text-[10px] uppercase text-slate-400 font-bold">Premium Routing Prompt Tokens</label>
+                                            <label class="text-[10px] uppercase text-slate-400 font-bold">จำนวน prompt token สำหรับ Premium Routing</label>
                                             <input type="number" min="1" x-model="routerRulesDraft.premium_prompt_tokens" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
-                                            <p class="mt-1 text-[10px] leading-4 text-slate-500 dark:text-slate-400">Routing signal only: ถ้า prompt ยาวถึงค่านี้ router จะถือว่าอาจต้องใช้ premium reasoning. ไม่ใช่ quota และไม่ตัดสิทธิ์ token usage โดยตรง</p>
+                                            <p class="mt-1 text-[10px] leading-4 text-slate-500 dark:text-slate-400">ใช้เป็น signal สำหรับ routing เท่านั้น: ถ้า prompt ยาวถึงค่านี้ router จะถือว่าอาจต้องใช้ premium reasoning ไม่ใช่ quota และไม่ตัดสิทธิ์ token usage โดยตรง</p>
                                         </div>
                                     </div>
                                     <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-xs leading-6 text-slate-600 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-400">
                                         <div class="mb-1 font-black uppercase tracking-widest text-[10px] text-slate-500 dark:text-slate-300">ไม่ชนกับ Quota Token</div>
-                                        <p><span class="font-bold">Premium Routing Prompt Tokens</span> ใช้เฉพาะตอนเลือกเส้นทางโมเดลใน Virtual Router โดยดู token ของ prompt/request เพื่อประเมินความซับซ้อน ส่วน <span class="font-bold">Quota Token</span> อยู่ใน Quota Policies และใช้ enforce ปริมาณ token ที่ผู้ใช้ใช้จริง/ถูก reserve ตาม daily/monthly limit. ดังนั้นสองค่านี้เป็นคนละชั้นกัน: routing decision vs quota enforcement.</p>
+                                        <p><span class="font-bold">จำนวน prompt token สำหรับ Premium Routing</span> ใช้เฉพาะตอนเลือกเส้นทางโมเดลใน Virtual Router โดยดู token ของ prompt/request เพื่อประเมินความซับซ้อน ส่วน <span class="font-bold">Quota Token</span> อยู่ใน Quota Policies และใช้ enforce ปริมาณ token ที่ผู้ใช้ใช้จริง/ถูก reserve ตาม daily/monthly limit. ดังนั้นสองค่านี้เป็นคนละชั้นกัน: routing decision vs quota enforcement.</p>
                                     </div>
                                     <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 text-xs">
-                                        <div class="rounded-2xl bg-white/60 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 p-4"><div class="font-black uppercase tracking-widest text-[10px] text-slate-400 mb-1">Balanced Models</div><div>Rule score ≥ threshold → candidate #3. Otherwise candidate #1.</div></div>
-                                        <div class="rounded-2xl bg-white/60 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 p-4"><div class="font-black uppercase tracking-widest text-[10px] text-slate-400 mb-1">Code Models</div><div>Coding signal → candidate #1. Premium score/LLM complex → candidate #3. Neither → candidate #2.</div></div>
-                                        <div class="rounded-2xl bg-white/60 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 p-4"><div class="font-black uppercase tracking-widest text-[10px] text-slate-400 mb-1">Long Context</div><div>Prompt tokens ≥ long-context threshold or ≥12 messages → candidate #1.</div></div>
+                                        <div class="rounded-2xl bg-white/60 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 p-4"><div class="font-black uppercase tracking-widest text-[10px] text-slate-400 mb-1">Balanced models</div><div>ถ้า rule score ≥ threshold → เลือก candidate #3; ถ้าไม่ถึง → เลือก candidate #1</div></div>
+                                        <div class="rounded-2xl bg-white/60 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 p-4"><div class="font-black uppercase tracking-widest text-[10px] text-slate-400 mb-1">Code models</div><div>ถ้าเจอสัญญาณ coding → candidate #1; ถ้า premium score สูงหรือ LLM มองว่าซับซ้อน → candidate #3; ถ้าไม่เข้าเงื่อนไข → candidate #2</div></div>
+                                        <div class="rounded-2xl bg-white/60 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 p-4"><div class="font-black uppercase tracking-widest text-[10px] text-slate-400 mb-1">Long context</div><div>ถ้า prompt tokens ≥ long-context threshold หรือมีข้อความ ≥ 12 messages → candidate #1</div></div>
                                     </div>
                                     <div class="space-y-3 max-h-[420px] overflow-auto pr-2">
                                         <template x-for="(rule, index) in routerRulesDraft.signal_rules" :key="rule.label + '-' + index">
                                             <div class="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-3">
                                                 <div class="flex items-center justify-between gap-3">
                                                     <div class="text-[10px] uppercase tracking-widest text-slate-400 font-black">Signal Rule</div>
-                                                    <button @click="removeRouterRuleDraft(index)" class="text-[10px] font-black uppercase text-rose-500">Remove</button>
+                                                    <button @click="removeRouterRuleDraft(index)" class="text-[10px] font-black uppercase text-rose-500">ลบ</button>
                                                 </div>
                                                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                                                     <input type="text" x-model="rule.label" placeholder="security" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono">
                                                     <input type="number" min="0" step="0.1" x-model="rule.weight" placeholder="weight" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
-                                                    <label class="flex items-center gap-2 text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2"><input type="checkbox" x-model="rule.coding"> Coding signal</label>
+                                                    <label class="flex items-center gap-2 text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2"><input type="checkbox" x-model="rule.coding"> เป็นสัญญาณ Coding</label>
                                                 </div>
-                                                <input type="text" x-model="rule.description" placeholder="Description" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
-                                                <textarea x-model="rule.keywordsText" rows="4" placeholder="One Thai/English keyword per line" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
+                                                <input type="text" x-model="rule.description" placeholder="คำอธิบาย" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
+                                                <textarea x-model="rule.keywordsText" rows="4" placeholder="ใส่ keyword ไทย/อังกฤษ บรรทัดละ 1 คำ" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
                                                 <div class="rounded-xl border px-3 py-2 text-[11px] font-bold" :class="ruleEffectClass(rule)" x-text="ruleEffectText(rule)"></div>
                                             </div>
                                         </template>
@@ -720,14 +720,14 @@
                                 <div x-show="routerPanel === 'preview'" x-transition class="mt-6 rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 p-4 space-y-4">
                                     <div class="flex items-center justify-between gap-3">
                                         <div>
-                                            <h4 class="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300">Route Decision Preview</h4>
-                                            <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Test unsaved virtual model drafts before saving config.</p>
+                                            <h4 class="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300">ทดลอง Route Decision</h4>
+                                            <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">ทดลอง routing จาก draft ที่ยังไม่ได้บันทึกจริงก่อน save config</p>
                                         </div>
-                                        <button @click="previewRouteDecision" :disabled="routePreview.loading" class="luxury-gradient px-4 py-2 rounded-xl text-[10px] font-black uppercase text-white disabled:opacity-50" x-text="routePreview.loading ? 'Previewing...' : 'Validate + Preview Route'"></button>
+                                        <button @click="previewRouteDecision" :disabled="routePreview.loading" class="luxury-gradient px-4 py-2 rounded-xl text-[10px] font-black uppercase text-white disabled:opacity-50" x-text="routePreview.loading ? 'กำลังทดลอง...' : 'ตรวจสอบ + ทดลอง route'"></button>
                                     </div>
                                     <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                                         <div>
-                                            <label class="text-[10px] uppercase text-slate-400 font-bold">Requested Model</label>
+                                            <label class="text-[10px] uppercase text-slate-400 font-bold">โมเดลที่ร้องขอ</label>
                                             <select x-model="routePreview.model" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
                                                 <template x-for="model in virtualModelsDraft" :key="model.id">
                                                     <option :value="model.id" x-text="model.id"></option>
@@ -735,26 +735,26 @@
                                             </select>
                                         </div>
                                         <div>
-                                            <label class="text-[10px] uppercase text-slate-400 font-bold">Max Tokens</label>
+                                            <label class="text-[10px] uppercase text-slate-400 font-bold">Max tokens</label>
                                             <input type="number" min="1" x-model="routePreview.max_tokens" class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs">
                                         </div>
                                         <div x-show="routePreview.result" class="rounded-xl bg-white/70 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 px-4 py-3">
-                                            <div class="text-[10px] uppercase text-slate-400 font-bold">Resolved Model</div>
+                                            <div class="text-[10px] uppercase text-slate-400 font-bold">โมเดลปลายทาง</div>
                                             <div class="font-mono text-xs font-black text-emerald-600 dark:text-emerald-400 break-all" x-text="routePreview.result?.resolved_model || '-'"></div>
                                         </div>
                                     </div>
                                     <div>
-                                        <label class="text-[10px] uppercase text-slate-400 font-bold">Sample Prompt</label>
-                                        <textarea x-model="routePreview.prompt" rows="5" placeholder="Paste a realistic user prompt to preview routing..." class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs"></textarea>
+                                        <label class="text-[10px] uppercase text-slate-400 font-bold">Prompt ตัวอย่าง</label>
+                                        <textarea x-model="routePreview.prompt" rows="5" placeholder="วาง prompt ที่ใกล้เคียงการใช้งานจริงเพื่อทดลอง routing..." class="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs"></textarea>
                                     </div>
                                     <div x-show="routePreview.error" class="text-xs text-rose-500 font-bold" x-text="routePreview.error"></div>
                                     <div x-show="routePreview.result" class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                                         <div class="rounded-xl bg-white/70 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 px-4 py-3">
-                                            <div class="text-[10px] uppercase text-slate-400 font-bold">Mode</div>
-                                            <div class="font-bold" x-text="routePreview.result?.used_virtual_model ? 'Virtual route' : 'Raw passthrough'"></div>
+                                            <div class="text-[10px] uppercase text-slate-400 font-bold">โหมด</div>
+                                            <div class="font-bold" x-text="routePreview.result?.used_virtual_model ? 'Route ผ่าน virtual model' : 'ส่งผ่าน raw model'"></div>
                                         </div>
                                         <div class="rounded-xl bg-white/70 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 px-4 py-3 md:col-span-2">
-                                            <div class="text-[10px] uppercase text-slate-400 font-bold">Reason</div>
+                                            <div class="text-[10px] uppercase text-slate-400 font-bold">เหตุผล</div>
                                             <div class="font-mono text-[11px] break-all" x-text="routePreview.result?.routing_reason || '-'"></div>
                                         </div>
                                         <div class="rounded-xl bg-white/70 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 px-4 py-3 md:col-span-3">
@@ -763,7 +763,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="mt-3 text-[10px] text-slate-400">This editor validates and writes back to <span class="font-mono">VIRTUAL_MODELS_JSON</span> and <span class="font-mono">VIRTUAL_ROUTER_CONFIG_JSON</span>.</div>
+                                <div class="mt-3 text-[10px] text-slate-400">หน้านี้จะตรวจสอบความถูกต้องและบันทึกกลับไปที่ <span class="font-mono">VIRTUAL_MODELS_JSON</span> และ <span class="font-mono">VIRTUAL_ROUTER_CONFIG_JSON</span></div>
                             </div>
 
                         <div x-show="systemTab === 'health'" x-transition class="glass p-6 rounded-2xl shadow-xl">

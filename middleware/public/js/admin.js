@@ -25,16 +25,16 @@
                 errors: {},
                 menuItems: [{ id: 'overview', label: 'Command Center', icon: 'fa-solid fa-gauge-high' }, { id: 'users', label: 'User Hub', icon: 'fa-solid fa-user-gear' }, { id: 'groups', label: 'Group Logic', icon: 'fa-solid fa-sitemap' }, { id: 'policies', label: 'Quota Policies', icon: 'fa-solid fa-shield-halved' }, { id: 'reports', label: 'Reports', icon: 'fa-solid fa-chart-column' }, { id: 'system', label: 'System', icon: 'fa-solid fa-sliders' }, { id: 'logs', label: 'Usage Logs', icon: 'fa-solid fa-receipt' }],
                 systemTabs: [
-                    { id: 'router', label: 'Router', icon: 'fa-solid fa-route', hint: 'Virtual models, premium gate, route preview' },
+                    { id: 'router', label: 'Router', icon: 'fa-solid fa-route', hint: 'Virtual model, premium gate, และ preview การ route' },
                     { id: 'health', label: 'Health', icon: 'fa-solid fa-heart-pulse', hint: 'Runtime dependency status' },
                     { id: 'config', label: 'Config', icon: 'fa-solid fa-code', hint: 'Raw config editor' },
                     { id: 'runtime', label: 'Logs', icon: 'fa-solid fa-terminal', hint: 'System runtime logs' },
                 ],
                 routerPanels: [
-                    { id: 'models', label: 'Models', icon: 'fa-solid fa-layer-group', hint: 'Virtual model strategies and candidates' },
-                    { id: 'rules', label: 'Signals', icon: 'fa-solid fa-wave-square', hint: 'Thai/English rule builder and route effects' },
-                    { id: 'policy', label: 'Policy', icon: 'fa-solid fa-shield-halved', hint: 'Premium gate and hybrid classifier' },
-                    { id: 'preview', label: 'Preview', icon: 'fa-solid fa-flask', hint: 'Try a prompt and inspect the decision' },
+                    { id: 'models', label: 'Models', icon: 'fa-solid fa-layer-group', hint: 'กำหนด strategy และ candidate ของ virtual model' },
+                    { id: 'rules', label: 'Signals', icon: 'fa-solid fa-wave-square', hint: 'สร้าง rule ไทย/อังกฤษและดูผลต่อการ route' },
+                    { id: 'policy', label: 'Policy', icon: 'fa-solid fa-shield-halved', hint: 'กำหนด premium gate และ hybrid classifier' },
+                    { id: 'preview', label: 'Preview', icon: 'fa-solid fa-flask', hint: 'ทดลอง prompt และดูผลการตัดสินใจ route' },
                 ],
                 stats: { total_users: 0, total_policies: 0, total_tokens: 0, total_cost: 0, total_requests: 0, last_24h: { tokens: 0, cost: 0, requests: 0, avg_latency_ms: 0, p95_latency_ms: 0, max_latency_ms: 0 }, top_models: [], top_users: [] },
                 performance: { summary: {}, recent: [] },
@@ -173,11 +173,11 @@
                 },
                 candidateRole(strategy, index) {
                     const roles = {
-                        cheap_first: ['default cheap route', 'fallback', 'fallback'],
-                        balanced: ['default route', 'fallback / light route', 'premium reasoning route'],
-                        premium: ['always selected', 'fallback', 'fallback'],
-                        code: ['coding route', 'non-code fallback', 'premium coding/reasoning route'],
-                        long_context: ['long-context route', 'normal-context route', 'fallback'],
+                        cheap_first: ['เส้นทางประหยัดเริ่มต้น', 'สำรอง', 'สำรอง'],
+                        balanced: ['เส้นทางเริ่มต้น', 'สำรอง / งานเบา', 'เส้นทาง premium reasoning'],
+                        premium: ['เลือกเสมอ', 'สำรอง', 'สำรอง'],
+                        code: ['เส้นทางงาน coding', 'สำรองสำหรับงานไม่ใช่ code', 'เส้นทาง premium coding/reasoning'],
+                        long_context: ['เส้นทาง long-context', 'เส้นทาง context ปกติ', 'สำรอง'],
                     };
                     return (roles[strategy] || [])[index] || `candidate ${index + 1}`;
                 },
@@ -186,21 +186,21 @@
                 },
                 strategyDescription(strategy) {
                     const map = {
-                        cheap_first: 'Always selects candidate #1. Best for low-cost lightweight tasks.',
-                        balanced: 'Selects candidate #3 when premium reasoning is true, otherwise candidate #1.',
-                        premium: 'Always selects candidate #1 and is usually protected by premium gate.',
-                        code: 'Coding signals select candidate #1; premium reasoning selects candidate #3; otherwise candidate #2.',
-                        long_context: 'Long-context signals select candidate #1; normal context selects candidate #2.',
+                        cheap_first: 'เลือก candidate #1 เสมอ เหมาะกับงานเบาและต้องการคุมต้นทุน',
+                        balanced: 'ถ้าเข้าเงื่อนไข premium reasoning จะเลือก candidate #3 ไม่เช่นนั้นเลือก candidate #1',
+                        premium: 'เลือก candidate #1 เสมอ และปกติควรถูกป้องกันด้วย premium gate',
+                        code: 'ถ้าเจอ coding signal จะเลือก candidate #1; ถ้าเข้า premium reasoning จะเลือก candidate #3; นอกนั้นเลือก candidate #2',
+                        long_context: 'ถ้าเป็น long-context จะเลือก candidate #1; context ปกติเลือก candidate #2',
                     };
-                    return map[strategy] || 'Unknown strategy';
+                    return map[strategy] || 'ไม่รู้จัก strategy นี้';
                 },
                 ruleEffectText(rule) {
                     const weight = Number(rule?.weight || 0);
                     const parts = [];
-                    if (weight > 0) parts.push(`adds +${weight} to premium score`);
-                    else parts.push('does not increase premium score');
-                    if (rule?.coding) parts.push('marks request as coding');
-                    parts.push(`premium if total score ≥ ${this.routerRulesDraft.premium_keyword_score}`);
+                    if (weight > 0) parts.push(`เพิ่ม +${weight} ให้ premium score`);
+                    else parts.push('ไม่เพิ่ม premium score');
+                    if (rule?.coding) parts.push('ระบุ request เป็นงาน coding');
+                    parts.push(`เข้า premium เมื่อคะแนนรวม ≥ ${this.routerRulesDraft.premium_keyword_score}`);
                     return parts.join(' · ');
                 },
                 ruleEffectClass(rule) {
