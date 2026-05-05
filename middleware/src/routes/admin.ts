@@ -308,7 +308,7 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
   // ── Performance logs ───────────────────────────────────────────────────────
   .get("/performance", async ({ query }: any) => {
     const q = query || {};
-    const where: string[] = ["started_at >= NOW() - INTERVAL '24 hours'"];
+    const where: string[] = ["started_at >= NOW() - INTERVAL '24 hours'", "path <> 'models'"];
     const params: any[] = [];
 
     if (q.user_id) { params.push(`%${q.user_id}%`); where.push(`user_id ILIKE $${params.length}`); }

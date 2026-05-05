@@ -376,6 +376,16 @@
                 async toggleUserStatus(user) { await fetch(`/admin/users/${user.id}`, { method: 'PATCH', headers: { 'x-admin-key': this.adminKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: !user.is_active }) }); await this.refreshAll(); },
                 async updateUserPolicy(user) { await fetch(`/admin/users/${user.id}`, { method: 'PATCH', headers: { 'x-admin-key': this.adminKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ policy_id: user.policy_id }) }); await this.refreshAll(); },
                 formatNumber(n) { return new Intl.NumberFormat().format(n || 0); },
+                formatResolvedModel(row) {
+                    const requested = row?.requested_model || '';
+                    const resolved = row?.resolved_model || '';
+                    const model = row?.model || '';
+                    if (resolved && resolved !== requested) return '→ ' + resolved;
+                    if (!resolved && model && model !== requested) return '→ ' + model;
+                    if (resolved && resolved === requested) return 'same model';
+                    if (model && model === requested) return 'same model';
+                    return '-';
+                },
                 barStyle(value, rows, field = 'cost') {
                     const nums = (rows || []).map(r => Number(r?.[field] || 0));
                     const max = Math.max(0, ...nums);

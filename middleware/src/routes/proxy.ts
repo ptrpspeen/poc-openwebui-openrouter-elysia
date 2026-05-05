@@ -299,7 +299,7 @@ export const proxyRoutes = new Elysia()
         status: upstreamResponse.status, isStream: false, startedAt: requestStartedAt, completedAt,
         totalCost: Number(respData?.usage?.cost || respData?.usage?.total_cost || 0),
         requestedModel: requestedModelName !== "unknown" ? requestedModelName : respData.model || modelName,
-        resolvedModel: respData.model || modelName,
+        resolvedModel: modelName || respData.model,
         routingReason: routingDecision?.reason || null,
       });
 
